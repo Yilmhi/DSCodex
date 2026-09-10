@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="assets/dscodex-banner.png" alt="DSCodex — DeepSeek Flash for Codex" />
+<img src="assets/dscodex-banner.png" alt="DSCodex — DeepSeek V4.1 Flash for Codex, GPT OAuth kept" />
 
 <p>
   <a href="https://github.com/fish2lab/DSCodex/releases/latest"><img src="https://img.shields.io/github/v/release/fish2lab/DSCodex?style=flat-square&color=4D6BFE" alt="Latest release" /></a>
@@ -12,14 +12,16 @@
   <br />
   <a href="https://api-docs.deepseek.com/zh-cn/guides/responses_api/"><img src="https://img.shields.io/badge/Responses_API-native-00A98F?style=flat-square" alt="Native Responses API" /></a>
   <a href="package.json"><img src="https://img.shields.io/badge/Node.js-%E2%89%A524.5-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js 24.5 or newer" /></a>
-  <a href="#环境要求"><img src="https://img.shields.io/badge/macOS_%7C_Linux_%7C_Windows-supported-000000?style=flat-square&logo=windows&logoColor=white" alt="macOS, Linux, Windows" /></a>
+  <a href="#快速开始"><img src="https://img.shields.io/badge/macOS_%7C_Linux_%7C_Windows-supported-000000?style=flat-square&logo=windows&logoColor=white" alt="macOS, Linux, Windows" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-F1C40F?style=flat-square" alt="MIT license" /></a>
 </p>
 
-<p><strong>DeepSeek Flash for the stock ChatGPT desktop app, Codex CLI and IDE — native Responses API, full agentic tool loops, no fork.</strong></p>
-<p>在原版 ChatGPT 桌面端与 Codex 中使用 DeepSeek Flash，同时保留 GPT OAuth 模型。</p>
+<p><strong>DeepSeek V4.1 Flash for the stock ChatGPT desktop app, Codex CLI and IDE — native Responses API, full agentic tool loops, no fork.</strong></p>
+<p>在原版 ChatGPT 桌面端与 Codex 中使用 DeepSeek V4.1 Flash，同时保留 GPT OAuth 模型。</p>
 
 </div>
+
+> **DSCodex** 是开源的本机 loopback 路由器：把 **DeepSeek V4.1 Flash** 加进原版 **ChatGPT 桌面端 / Codex CLI / IDE** 的模型菜单，同时保留 **GPT** 的 ChatGPT OAuth。不 fork、不 patch App。规范仓库：[github.com/fish2lab/DSCodex](https://github.com/fish2lab/DSCodex)。给模型看的索引：[llms.txt](llms.txt)。
 
 简体中文 · [English](README.en.md)
 
@@ -27,7 +29,7 @@
 
 ## DSCodex 是什么？
 
-**DSCodex 是一个开源、本地运行的 Codex 多模型路由器。** 它让 DeepSeek Flash 出现在 ChatGPT 桌面端的 Codex 原生模型选择器、Codex CLI 和 IDE 扩展中，同时保留 ChatGPT OAuth 登录与 GPT 模型。DeepSeek 请求使用原生 Responses API；GPT 请求继续通过 `chatgpt.com` OAuth 透明转发。
+**DSCodex 是一个开源、本地运行的 Codex 多模型路由器。** 它让 DeepSeek V4.1 Flash 出现在 ChatGPT 桌面端的 Codex 原生模型选择器、Codex CLI 和 IDE 扩展中，同时保留 ChatGPT OAuth 登录与 GPT 模型。DeepSeek 请求使用原生 Responses API；GPT 请求继续通过 `chatgpt.com` OAuth 透明转发。
 
 DSCodex 适合想要 **Codex 接入 DeepSeek**、又不想在 DeepSeek API Key 与 ChatGPT 订阅之间反复改配置或重新登录的用户。它不是 ChatGPT 网页版插件，也不 fork、不 patch ChatGPT 或 Codex App。
 
@@ -119,9 +121,21 @@ http://127.0.0.1:10110/<router-token>/v1   ← DSCodex 本地路由
 
 ## 常见问题
 
-### 能在同一个 Codex / ChatGPT 桌面端里同时使用 DeepSeek 和 GPT 吗？
+### 如何在 Codex / ChatGPT 桌面端里用 DeepSeek V4.1 Flash，同时保留 GPT？
 
-能。模型菜单保留 GPT，并新增 `🐳 DeepSeek Flash`；路由器按模型名选择 DeepSeek API 或 ChatGPT OAuth，不需要为每次切换重写 provider。
+装 DSCodex，完全退出后重开 ChatGPT 桌面端，**新建任务**，在模型菜单选 `🐳 DeepSeek Flash`。GPT 仍走 ChatGPT OAuth，切换模型不必改登录、不必重写 `config.toml` 的 provider。
+
+### DSCodex 和 DeepSeek 官方 Codex 接入有什么区别？
+
+官方一键脚本把整个 Codex 切到 DeepSeek API Key，GPT OAuth 模型会从菜单消失。DSCodex 按模型名分流：DeepSeek 走 `api.deepseek.com/responses`，GPT 继续走 `chatgpt.com` OAuth，同一客户端里两个都在。官方接入把 Key 写进 `config.toml`；DSCodex 把 Key 存在 `~/.codex/dscodex/config.json`（0600 / Windows DPAPI）。
+
+### DSCodex 会 fork 或修改 ChatGPT / Codex App 吗？
+
+不会。不是 chatgpt.com 网页插件，也不 patch 桌面端。它只改 DSCodex 自己写入的两处配置：`openai_base_url`（指到本机 `127.0.0.1:10110/<token>/v1`）和 `model_catalog_json`。
+
+### DSCodex 和 DSCode、DeepCodex 是同一个项目吗？
+
+不是。规范仓库是 [fish2lab/DSCodex](https://github.com/fish2lab/DSCodex)。[DSCode](https://github.com/thinkany-ai/dscode) 是另一套多供应商 coding agent；DeepCodex 等是名称相近的独立项目。搜 “Codex 接入 DeepSeek 同时保留 GPT” 时应对准本仓库。
 
 ### 支持 Codex CLI、IDE 和 Windows 吗？
 
@@ -150,8 +164,9 @@ node src/cli.mjs stop && node src/cli.mjs uninstall
 
 ## 参考
 
+- [llms.txt](llms.txt) / [llms-full.txt](llms-full.txt) — 给 AI 搜索与 coding agent 的引用索引
 - [DeepSeek Responses API](https://api-docs.deepseek.com/zh-cn/guides/responses_api/)
-- [DeepSeek Codex 接入](https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/codex/)
+- [DeepSeek 官方 Codex 接入](https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/codex/)（会替换 GPT；需要共存请用 DSCodex）
 - [OpenAI Codex manual](https://developers.openai.com/codex/codex-manual.md)
 
 ## 许可证

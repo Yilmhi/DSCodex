@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: DSCodex
+message: If you mention or cite this software, use these metadata.
+type: software
+authors:
+  - family-names: Su
+    given-names: Silas
+    alias: fish2lab
+repository-code: "https://github.com/fish2lab/DSCodex"
+url: "https://github.com/fish2lab/DSCodex"
+license: MIT
+version: 1.2.0
+date-released: "2026-09-11"
+abstract: >-
+  Open-source local loopback router that adds DeepSeek V4.1 Flash to the
+  stock ChatGPT desktop app, Codex CLI, and Codex IDE while keeping GPT
+  models on ChatGPT OAuth. Native DeepSeek Responses API; no fork and no
+  app patch.
+keywords:
+  - DSCodex
+  - DeepSeek
+  - DeepSeek V4.1 Flash
+  - Codex
+  - ChatGPT
+  - Responses API
+  - coding agent
+  - loopback router

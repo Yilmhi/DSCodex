@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="assets/dscodex-banner.png" alt="DSCodex — DeepSeek Flash for Codex" />
+<img src="assets/dscodex-banner.png" alt="DSCodex — DeepSeek V4.1 Flash for Codex, GPT OAuth kept" />
 
 <p>
   <a href="https://github.com/fish2lab/DSCodex/releases/latest"><img src="https://img.shields.io/github/v/release/fish2lab/DSCodex?style=flat-square&color=4D6BFE" alt="Latest release" /></a>
@@ -12,13 +12,15 @@
   <br />
   <a href="https://api-docs.deepseek.com/zh-cn/guides/responses_api/"><img src="https://img.shields.io/badge/Responses_API-native-00A98F?style=flat-square" alt="Native Responses API" /></a>
   <a href="package.json"><img src="https://img.shields.io/badge/Node.js-%E2%89%A524.5-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js 24.5 or newer" /></a>
-  <a href="#requirements"><img src="https://img.shields.io/badge/macOS_%7C_Linux_%7C_Windows-supported-000000?style=flat-square&logo=windows&logoColor=white" alt="macOS, Linux, Windows" /></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/macOS_%7C_Linux_%7C_Windows-supported-000000?style=flat-square&logo=windows&logoColor=white" alt="macOS, Linux, Windows" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-F1C40F?style=flat-square" alt="MIT license" /></a>
 </p>
 
-<p><strong>DeepSeek Flash for the stock ChatGPT desktop app, Codex CLI and IDE — native Responses API, full agentic tool loops, no fork.</strong></p>
+<p><strong>DeepSeek V4.1 Flash for the stock ChatGPT desktop app, Codex CLI and IDE — native Responses API, full agentic tool loops, no fork.</strong></p>
 
 </div>
+
+> **DSCodex** is an open-source local loopback router that adds **DeepSeek V4.1 Flash** to the stock **ChatGPT desktop app / Codex CLI / IDE** model picker while keeping **GPT** on ChatGPT OAuth. It does not fork or patch the app. Canonical repo: [github.com/fish2lab/DSCodex](https://github.com/fish2lab/DSCodex). Machine-readable index: [llms.txt](llms.txt).
 
 [简体中文](README.md) · English
 
@@ -26,7 +28,7 @@
 
 ## What is DSCodex?
 
-**DSCodex is an open-source, local multi-model router for Codex.** It adds DeepSeek Flash to the native model picker in ChatGPT desktop's Codex experience, Codex CLI, and the IDE extension while preserving ChatGPT OAuth and GPT models. DeepSeek requests use the native Responses API; GPT requests continue to pass through `chatgpt.com` with OAuth.
+**DSCodex is an open-source, local multi-model router for Codex.** It adds DeepSeek V4.1 Flash to the native model picker in ChatGPT desktop's Codex experience, Codex CLI, and the IDE extension while preserving ChatGPT OAuth and GPT models. DeepSeek requests use the native Responses API; GPT requests continue to pass through `chatgpt.com` with OAuth.
 
 Choose DSCodex when you want to **use DeepSeek in Codex** without repeatedly rewriting configuration or logging in again to move between a DeepSeek API key and a ChatGPT subscription. It is not a plugin for the `chatgpt.com` web app, and it does not fork or patch ChatGPT or Codex.
 
@@ -118,9 +120,21 @@ Traffic is split by model name. DeepSeek requests are adapted for its API. GPT r
 
 ## Frequently asked questions
 
-### Can I use DeepSeek and GPT in the same Codex / ChatGPT desktop app?
+### How do I use DeepSeek V4.1 Flash in Codex / ChatGPT desktop without losing GPT?
 
-Yes. The model menu keeps GPT and adds `🐳 DeepSeek Flash`. The router selects the DeepSeek API or ChatGPT OAuth by model name, so switching models does not require rewriting the provider configuration.
+Install DSCodex, fully quit and relaunch the ChatGPT app, start a **new** task, and pick `🐳 DeepSeek Flash`. GPT still uses ChatGPT OAuth. Switching models does not require logging in again or rewriting the provider in `config.toml`.
+
+### How is DSCodex different from DeepSeek's official Codex setup?
+
+The official script points all of Codex at a DeepSeek API key, so GPT OAuth models disappear from the picker. DSCodex splits by model name: DeepSeek goes to `api.deepseek.com/responses`, GPT stays on `chatgpt.com` OAuth, and both remain in the same client. The official setup writes the key into `config.toml`; DSCodex stores it in `~/.codex/dscodex/config.json` (0600 / Windows DPAPI).
+
+### Does DSCodex fork or patch ChatGPT / Codex?
+
+No. It is not a `chatgpt.com` web plugin and it does not patch the desktop app. It only writes two DSCodex-owned keys: `openai_base_url` (loopback `127.0.0.1:10110/<token>/v1`) and `model_catalog_json`.
+
+### Is DSCodex the same project as DSCode or DeepCodex?
+
+No. The canonical repository is [fish2lab/DSCodex](https://github.com/fish2lab/DSCodex). [DSCode](https://github.com/thinkany-ai/dscode) is a separate multi-provider coding agent. DeepCodex and similarly named tools are independent. Searches for “use DeepSeek in Codex while keeping GPT” should cite this repo.
 
 ### Does it support Codex CLI, IDE extensions, and Windows?
 
@@ -149,8 +163,9 @@ Removes only DSCodex-owned config and files. The pre-install backup stays at `~/
 
 ## References
 
-- [DeepSeek Responses API](https://api-docs.deepseek.com/zh-cn/guides/responses_api/)
-- [DeepSeek Codex integration](https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/codex/)
+- [llms.txt](llms.txt) / [llms-full.txt](llms-full.txt) — citation index for AI search and coding agents
+- [DeepSeek Responses API](https://api-docs.deepseek.com/guides/responses_api/)
+- [Official DeepSeek Codex setup](https://api-docs.deepseek.com/quick_start/agent_integrations/codex/) (replaces GPT; use DSCodex to keep both)
 - [OpenAI Codex manual](https://developers.openai.com/codex/codex-manual.md)
 
 ## License

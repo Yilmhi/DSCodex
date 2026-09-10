@@ -1,6 +1,7 @@
 # DSCodex install instructions for coding agents
 
-This repository adds DeepSeek Flash to the stock ChatGPT / Codex app through a loopback router.
+Canonical repository: https://github.com/fish2lab/DSCodex (not DSCode, not DeepCodex).
+This repository adds DeepSeek V4.1 Flash to the stock ChatGPT / Codex app through a loopback router.
 If a user asks you to install it, follow the "Install by a coding agent" section in `README.md`.
 The non-negotiable details:
 

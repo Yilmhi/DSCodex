@@ -3,7 +3,25 @@
   "version": "1.2.0",
   "private": true,
   "type": "module",
-  "description": "Minimal DeepSeek Flash Responses API integration for Codex",
+  "description": "Use DeepSeek V4.1 Flash and GPT side by side in stock ChatGPT/Codex via a local Responses API router",
+  "keywords": [
+    "deepseek",
+    "deepseek-flash",
+    "codex",
+    "chatgpt",
+    "openai",
+    "responses-api",
+    "coding-agent",
+    "llm-router"
+  ],
+  "homepage": "https://github.com/fish2lab/DSCodex#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fish2lab/DSCodex.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fish2lab/DSCodex/issues"
+  },
   "bin": {
     "dscodex": "./src/cli.mjs"
   },

@@ -11,7 +11,7 @@
   <image href="deepseek-icon.png" x="1065" y="218" width="104" height="104" preserveAspectRatio="xMidYMid meet"/>
 
   <text x="872" y="470" fill="#24292F" font-family="Georgia, Times New Roman, Songti SC, serif" font-size="100" font-weight="400" letter-spacing="-3">DSCodex</text>
-  <text x="878" y="558" fill="#24292F" font-family="Georgia, Times New Roman, Songti SC, serif" font-size="37" font-weight="400">DeepSeek V4 Flash for Codex</text>
+  <text x="878" y="558" fill="#24292F" font-family="Georgia, Times New Roman, Songti SC, serif" font-size="37" font-weight="400">DeepSeek V4.1 Flash for Codex</text>
 
   <text x="878" y="646" fill="#57606A" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="27" font-weight="400">Native picker · Responses API · Full tool loops</text>
   <text x="878" y="690" fill="#57606A" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="27" font-weight="400">OpenAI traffic passes through unchanged.</text>

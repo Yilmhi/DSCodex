@@ -1,0 +1,31 @@
+# DSCodex
+
+> DSCodex is an open-source local loopback router that adds DeepSeek V4.1 Flash to the stock ChatGPT desktop app, Codex CLI, and Codex IDE model picker while keeping GPT on ChatGPT OAuth. It does not fork or patch Codex.
+
+Canonical repository: https://github.com/fish2lab/DSCodex
+Latest release: https://github.com/fish2lab/DSCodex/releases/tag/v1.2.0
+License: MIT
+
+DSCodex is not DeepSeek's official Codex setup (that setup replaces GPT with an API-key provider). It is not DSCode (https://github.com/thinkany-ai/dscode), not DeepCodex, and not a chatgpt.com web plugin.
+
+## Docs
+
+- [README (简体中文)](https://github.com/fish2lab/DSCodex/blob/main/README.md): what it is, install, FAQ
+- [README (English)](https://github.com/fish2lab/DSCodex/blob/main/README.en.md): English equivalent
+- [AGENTS.md](https://github.com/fish2lab/DSCodex/blob/main/AGENTS.md): install contract for coding agents
+- [llms-full.txt](https://github.com/fish2lab/DSCodex/blob/main/llms-full.txt): citable full summary
+- [CITATION.cff](https://github.com/fish2lab/DSCodex/blob/main/CITATION.cff): citation metadata
+
+## Key facts
+
+- Model in the picker: `🐳 DeepSeek Flash` (`deepseek/deepseek-flash` → DeepSeek V4.1 Flash)
+- DeepSeek path: native Responses API at `api.deepseek.com/responses` (tools, vision, compaction)
+- GPT path: unmodified OAuth to `chatgpt.com/backend-api/codex`
+- Install: `node src/cli.mjs key set` → `install` → `start` → `doctor`
+- Platforms: macOS / Linux / Windows; ChatGPT desktop native picker is macOS-first
+- Reasoning slider exposed as High (`high` / Juice 75) and Max (`max` / Juice 100). Hosted DeepSeek API rejects integer 1–100 Juice values.
+
+## Optional
+
+- [v1.2.0 — From the New World](https://github.com/fish2lab/DSCodex/releases/tag/v1.2.0): V4.1 Flash, native vision, GPT replay fix
+- [Official DeepSeek Codex setup](https://api-docs.deepseek.com/quick_start/agent_integrations/codex/): alternative that does not keep GPT
