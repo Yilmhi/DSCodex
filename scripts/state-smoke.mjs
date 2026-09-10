@@ -83,11 +83,11 @@ child.stdout.on("data", (chunk) => {
         send({
           id: 3,
           method: "thread/settings/update",
-          params: { threadId, model: "deepseek/deepseek-v4-flash", effort: "xhigh" },
+          params: { threadId, model: "deepseek/deepseek-flash", effort: "xhigh" },
         });
       } else if (message.method === "thread/settings/updated" && message.params?.threadId === threadId) {
         const settings = message.params.threadSettings;
-        if (settings.model === "deepseek/deepseek-v4-flash") {
+        if (settings.model === "deepseek/deepseek-flash") {
           assert.equal(settings.effort, "max");
           assert.equal(settings.serviceTier, "default");
           if (!sawDeepSeek) {

@@ -30,7 +30,7 @@ async function bodyOf(request) {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-test("routes V4 Flash and Pro to their native DeepSeek Responses models", async (t) => {
+test("routes Flash and legacy task aliases to the current Flash model", async (t) => {
   const observed = [];
   const upstream = http.createServer(async (request, response) => {
     observed.push({
@@ -60,8 +60,11 @@ test("routes V4 Flash and Pro to their native DeepSeek Responses models", async 
   t.after(async () => { await close(proxy); await close(upstream); });
 
   for (const [pickerModel, wireModel] of [
-    ["deepseek/deepseek-v4-flash", "deepseek-v4-flash"],
-    ["deepseek/deepseek-v4-pro", "deepseek-v4-pro"],
+    ["deepseek/deepseek-flash", "deepseek-flash"],
+    ["deepseek-flash", "deepseek-flash"],
+    ["deepseek/deepseek-v4-flash", "deepseek-flash"],
+    ["deepseek/deepseek-v4-pro", "deepseek-flash"],
+    ["deepseek-v4-pro", "deepseek-flash"],
   ]) {
     const codexBody = zstdCompressSync(JSON.stringify({
       model: pickerModel,
@@ -128,6 +131,7 @@ test("adapts Codex remote compaction v2 to a DeepSeek summary and restores it on
   const proxy = createProxyServer({
     deepSeekKey: "test-key",
     deepSeekBaseUrl: upstreamUrl,
+    chatGptBaseUrl: upstreamUrl,
     logger: { info() {}, error() {} },
     routerToken: ROUTER_TOKEN,
   });
@@ -157,13 +161,13 @@ test("adapts Codex remote compaction v2 to a DeepSeek summary and restores it on
   const compactItem = events.find((event) => event.type === "response.output_item.done")?.item;
   const completed = events.find((event) => event.type === "response.completed")?.response;
   assert.equal(compactItem?.type, "compaction");
-  assert.equal(completed?.model, "deepseek-v4-pro");
+  assert.equal(completed?.model, "deepseek-flash");
   assert.match(compactItem.encrypted_content, /^dscodex-compaction-v1:/);
   assert.equal(compactItem.encrypted_content.includes(summary), false);
   assert.equal(observed[0].input.some((item) => item.type === "compaction_trigger"), false);
   assert.equal("tools" in observed[0], false);
   assert.equal("parallel_tool_calls" in observed[0], false);
-  assert.equal(observed[0].model, "deepseek-v4-pro");
+  assert.equal(observed[0].model, "deepseek-flash");
   assert.match(observed[0].input.at(-1).content[0].text, /compact handoff summary/i);
 
   const replayResponse = await fetch(route(proxyUrl), {
@@ -183,6 +187,17 @@ test("adapts Codex remote compaction v2 to a DeepSeek summary and restores it on
   const restored = observed[1].input.find((item) => item.role === "assistant");
   assert.match(restored.content[0].text, /Compacted prior context/);
   assert.match(restored.content[0].text, /tests and a restart are still pending/);
+  const gptReplay = await fetch(route(proxyUrl), {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ model: "gpt-5.6-sol", input: [compactItem] }),
+  });
+  assert.equal(gptReplay.status, 200);
+  await gptReplay.text();
+  assert.deepEqual(observed[2].input, [{
+    type: "message", role: "assistant",
+    content: [{ type: "output_text", text: `[Compacted prior context]\n${summary}` }],
+  }]);
+
 });
 
 test("drops compaction items that cannot be decrypted instead of forwarding them", async (t) => {
@@ -672,4 +687,58 @@ test("survives a client reset on an upgrade attempt", async (t) => {
   // Still serving: an unhandled 'error' event would have killed this process.
   const response = await fetch(route(proxyUrl, "/v1/models"));
   assert.equal(response.status, 200);
+});
+
+for (const compressed of [false, true]) {
+  test(`GPT replay strips only foreign reasoning and resets encoding: ${compressed}`, async (t) => {
+    let observed;
+    const upstream = http.createServer(async (request, response) => {
+      observed = { headers: request.headers, body: JSON.parse(await bodyOf(request)) };
+      response.end('{}');
+    });
+    const proxy = createProxyServer({ chatGptBaseUrl: await listen(upstream), routerToken: ROUTER_TOKEN, logger: { info() {}, error() {} } });
+    const url = await listen(proxy);
+    t.after(async () => { await close(proxy); await close(upstream); });
+    const retained = [
+      { type: "reasoning", encrypted_content: "gpt-sealed", content: [{ type: "reasoning_text", text: "native" }] },
+      { type: "reasoning", summary: [{ type: "summary_text", text: "keep" }] },
+      { type: "message", role: "user", content: "reasoning_text is literal user text" },
+      { type: "compaction", encrypted_content: "gpt-compaction" },
+      { type: "function_call", call_id: "call_1", name: "shell", arguments: "{}" },
+      { type: "function_call_output", call_id: "call_1", output: "done" },
+    ];
+    const body = JSON.stringify({ model: "gpt-5.6-sol", input: [
+      ...retained.slice(0, 3),
+      { type: "reasoning", encrypted_content: null, content: [{ type: "reasoning_text", text: "foreign" }] },
+      { type: "reasoning", content: [{ type: "reasoning_text", text: "foreign without encryption field" }] },
+      { type: "compaction", encrypted_content: "dscodex-compaction-v1:rotated-or-invalid" },
+      ...retained.slice(3),
+    ] });
+    const response = await fetch(route(url), { method: "POST", headers: {
+      "content-type": "application/json", ...(compressed ? { "content-encoding": "gzip" } : {}),
+    }, body: compressed ? gzipSync(body) : body });
+    assert.equal(response.status, 200);
+    await response.text();
+    assert.deepEqual(observed.body.input, retained);
+    assert.equal(observed.headers['content-encoding'], undefined);
+  });
+}
+
+test("ordinary compressed GPT traffic preserves exact bytes", async (t) => {
+  let observed;
+  const upstream = http.createServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    observed = { headers: request.headers, raw: Buffer.concat(chunks) };
+    response.end('{}');
+  });
+  const proxy = createProxyServer({ chatGptBaseUrl: await listen(upstream), routerToken: ROUTER_TOKEN, logger: { info() {}, error() {} } });
+  const url = await listen(proxy);
+  t.after(async () => { await close(proxy); await close(upstream); });
+  const body = gzipSync('{ "model": "gpt-5.6-sol", "input": "hello" }');
+  const response = await fetch(route(url), { method: "POST", headers: { "content-encoding": "gzip" }, body });
+  await response.text();
+  assert.equal(response.status, 200);
+  assert.deepEqual(observed.raw, body);
+  assert.equal(observed.headers['content-encoding'], 'gzip');
 });

@@ -13,7 +13,6 @@ import {
   DEEPSEEK_BASE_URL,
   deepSeekModelFor,
 } from "./constants.mjs";
-import { createVisionDescriber } from "./vision.mjs";
 
 const CHATGPT_FORWARDED_REQUEST_HEADERS = new Set([
   "authorization",
@@ -118,6 +117,34 @@ function convertInputItem(item, compactionSecret) {
     converted.role = "assistant";
   }
   return converted;
+}
+
+// Provider-specific replay artifacts cannot be sent to ChatGPT. Keep native GPT
+// reasoning intact and avoid re-encoding ordinary GPT requests at all.
+function buildChatGptBody(body, compactionSecret) {
+  if (!Array.isArray(body?.input)) return null;
+  let changed = false;
+  const input = body.input.flatMap((item) => {
+    if (item?.type === "reasoning"
+        && !item.encrypted_content
+        && Array.isArray(item.content)
+        && item.content.some((part) => part?.type === "reasoning_text")) {
+      changed = true;
+      return [];
+    }
+    if (item?.type === "compaction"
+        && typeof item.encrypted_content === "string"
+        && item.encrypted_content.startsWith(COMPACTION_PREFIX)) {
+      changed = true;
+      const summary = openCompaction(item.encrypted_content, compactionSecret);
+      return summary ? [{
+        type: "message", role: "assistant",
+        content: [{ type: "output_text", text: `[Compacted prior context]\n${summary}` }],
+      }] : [];
+    }
+    return [item];
+  });
+  return changed ? { ...body, input } : null;
 }
 
 // Codex replays a tool call as a call item plus a matching output item. DeepSeek's
@@ -440,7 +467,6 @@ export function createProxyServer({
   chatGptBaseUrl = CHATGPT_CODEX_BASE_URL,
   models = [],
   logger = console,
-  visionModel,
   routerToken,
   shutdownToken = "",
   instanceId = "",
@@ -450,7 +476,6 @@ export function createProxyServer({
 } = {}) {
   if (!validRouterToken(routerToken)) throw new Error("DSCodex routerToken is required");
   if (shutdownToken && !validRouterToken(shutdownToken)) throw new Error("Invalid DSCodex shutdownToken");
-  const vision = createVisionDescriber({ baseUrl: chatGptBaseUrl, model: visionModel, logger });
   const server = http.createServer(async (request, response) => {
     const startedAt = Date.now();
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -519,20 +544,24 @@ export function createProxyServer({
         return;
       }
       let outgoingBody = raw;
+      let rewrittenBody = false;
       if (deepSeek) {
         const body = compactionRequest
           ? buildDeepSeekCompactionBody(parsed, routerToken)
           : buildDeepSeekBody(parsed, { compactionSecret: routerToken });
-        // DeepSeek V4 is text-only: borrow the caller's GPT OAuth to describe any
-        // attached images, then inject the descriptions as plain input_text.
-        const rewritten = await vision.rewriteImages(body, request.headers);
-        if (rewritten) logger.info?.(`vision: described ${rewritten} image(s) for ${pathname}`);
         outgoingBody = Buffer.from(JSON.stringify(body));
+        rewrittenBody = true;
+      } else {
+        const body = buildChatGptBody(parsed, routerToken);
+        if (body) {
+          outgoingBody = Buffer.from(JSON.stringify(body));
+          rewrittenBody = true;
+        }
       }
       const baseUrl = deepSeek ? deepSeekBaseUrl : chatGptBaseUrl;
       const target = new URL(`${baseUrl.replace(/\/$/, "")}${upstreamPath(pathname)}${url.search}`);
       const headers = copyRequestHeaders(request, deepSeek ? deepSeekKey : undefined);
-      if (!deepSeek && request.headers["content-encoding"]) {
+      if (!rewrittenBody && request.headers["content-encoding"]) {
         headers.set("content-encoding", request.headers["content-encoding"]);
       }
       headers.set("content-length", String(outgoingBody.length));

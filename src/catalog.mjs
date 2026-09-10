@@ -1,5 +1,5 @@
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
-import { DEEPSEEK_MODELS } from "./constants.mjs";
+import { DEEPSEEK_MODELS, deepSeekModelFor } from "./constants.mjs";
 
 const HIGH = {
   effort: "high",
@@ -23,6 +23,17 @@ const NATIVE_ENTRY_DEFAULTS = {
   prefer_websockets: false,
   supports_reasoning_summaries: false,
 };
+
+// These fields are required by the current Codex model-catalog parser. Keep
+// this deliberately narrower than the full catalog shape: native entries may
+// gain optional fields independently, while doctor only needs to know that the
+// merged catalog is parseable and still contains the DSCodex Flash model.
+const REQUIRED_ENTRY_FIELD_TYPES = Object.freeze({
+  slug: "string",
+  base_instructions: "string",
+  prefer_websockets: "boolean",
+  supports_reasoning_summaries: "boolean",
+});
 
 function backfillNativeEntry(model) {
   const entry = clone(model);
@@ -61,8 +72,7 @@ export function buildDeepSeekCatalogEntry(template, model = DEEPSEEK_MODELS[0]) 
   entry.default_verbosity = "low";
   entry.apply_patch_tool_type = "freeform";
   entry.web_search_tool_type = "text";
-  // Declaring the image modality opens the desktop view_image gate; the router
-  // rewrites those images into GPT-generated descriptions before DeepSeek sees them.
+  // Flash supports native images, including view_image tool results.
   entry.input_modalities = ["text", "image"];
   entry.supports_image_detail_original = false;
   // DeepSeek's Responses API rejects a turn that replays more than one tool call
@@ -102,8 +112,10 @@ export function buildCatalog(cache) {
   if (!Array.isArray(cache?.models) || cache.models.length === 0) {
     throw new Error("Codex models_cache.json has no model templates; open Codex once, then retry");
   }
-  const deepSeekSlugs = new Set(DEEPSEEK_MODELS.map((model) => model.pickerSlug));
-  const nativeModels = cache.models.filter((model) => !deepSeekSlugs.has(model?.slug));
+  const nativeModels = cache.models.filter((model) => !deepSeekModelFor(model?.slug));
+  if (nativeModels.length === 0) {
+    throw new Error("Codex models_cache.json has no native model template; open Codex once, then retry");
+  }
   const template = nativeModels.find((model) => model?.slug === "gpt-5.6-sol") ?? nativeModels[0];
   return {
     models: [
@@ -111,6 +123,22 @@ export function buildCatalog(cache) {
       ...nativeModels.map(backfillNativeEntry),
     ],
   };
+}
+
+export function isCatalogReady(catalog) {
+  if (!Array.isArray(catalog?.models) || catalog.models.length === 0) return false;
+
+  const slugs = new Set();
+  for (const model of catalog.models) {
+    if (!model || typeof model !== "object" || Array.isArray(model)) return false;
+    if (Object.entries(REQUIRED_ENTRY_FIELD_TYPES).some(([field, type]) => (
+      typeof model[field] !== type
+    ))) return false;
+    if (model.slug.trim().length === 0 || slugs.has(model.slug)) return false;
+    slugs.add(model.slug);
+  }
+
+  return DEEPSEEK_MODELS.every((model) => slugs.has(model.pickerSlug));
 }
 
 export function writeCatalog({ catalogPath, catalog }) {

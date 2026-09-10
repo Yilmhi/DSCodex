@@ -47,8 +47,7 @@ child.stdout.on("data", (chunk) => {
         "native GPT catalog entries were not preserved",
       );
       const expected = [
-        ["deepseek/deepseek-v4-flash", "🐳 V4 Flash"],
-        ["deepseek/deepseek-v4-pro", "🐳 V4 Pro"],
+        ["deepseek/deepseek-flash", "🐳 DeepSeek Flash"],
       ];
       const models = expected.map(([slug, displayName]) => {
         const model = message.result?.data?.find((item) => item.model === slug);

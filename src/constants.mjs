@@ -6,26 +6,27 @@ export const DEFAULT_PORT = 10110;
 export const HOST = "127.0.0.1";
 export const DEEPSEEK_MODELS = Object.freeze([
   Object.freeze({
-    pickerSlug: "deepseek/deepseek-v4-flash",
-    wireModel: "deepseek-v4-flash",
-    displayName: "🐳 V4 Flash",
-    productName: "DeepSeek V4 Flash",
+    pickerSlug: "deepseek/deepseek-flash",
+    wireModel: "deepseek-flash",
+    displayName: "🐳 DeepSeek Flash",
+    productName: "DeepSeek V4.1 Flash",
   }),
-  Object.freeze({
-    pickerSlug: "deepseek/deepseek-v4-pro",
-    wireModel: "deepseek-v4-pro",
-    displayName: "🐳 V4 Pro",
-    productName: "DeepSeek V4 Pro",
-  }),
+]);
+
+// Keep resumed tasks and user-owned model settings routable after migration.
+const LEGACY_DEEPSEEK_MODELS = new Set([
+  "deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-vision-exp",
 ]);
 export const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 export const CHATGPT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex";
 export const MANAGED_MARKER = "# DSCodex managed; remove with `dscodex uninstall`";
 
 export function deepSeekModelFor(model) {
-  return DEEPSEEK_MODELS.find((candidate) => (
-    model === candidate.pickerSlug || model === candidate.wireModel
-  )) ?? null;
+  if (typeof model !== "string") return null;
+  const wireModel = model.startsWith("deepseek/") ? model.slice("deepseek/".length) : model;
+  return wireModel === DEEPSEEK_MODELS[0].wireModel || LEGACY_DEEPSEEK_MODELS.has(wireModel)
+    ? DEEPSEEK_MODELS[0]
+    : null;
 }
 
 export function resolveCodexHome(env = process.env) {

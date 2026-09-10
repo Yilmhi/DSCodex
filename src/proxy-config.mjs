@@ -5,7 +5,7 @@
 // would otherwise fail every GPT passthrough with ECONNRESET while DeepSeek
 // (a directly reachable host) keeps working. The router therefore resolves a
 // proxy explicitly and re-execs itself with --use-env-proxy so both the GPT
-// passthrough and the GPT vision describes use it, while NO_PROXY keeps
+// passthrough uses it, while NO_PROXY keeps
 // loopback and api.deepseek.com direct.
 
 const DIRECT_NO_PROXY = ["127.0.0.1", "localhost", "::1", "api.deepseek.com"];
