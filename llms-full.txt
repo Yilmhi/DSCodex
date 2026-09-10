@@ -1,9 +1,9 @@
 # DSCodex
 
-> Open-source local multi-model router for OpenAI Codex. Adds DeepSeek V4.1 Flash to the stock ChatGPT desktop app, Codex CLI, and Codex IDE, and keeps GPT models on ChatGPT OAuth. Native DeepSeek Responses API. No fork, no app patch.
+> Open-source multi-model router for OpenAI Codex that runs only on the user's machine. It adds DeepSeek V4.1 Flash to the stock ChatGPT desktop app, Codex CLI, and Codex IDE extension, and keeps GPT models on ChatGPT OAuth. DeepSeek traffic uses the native Responses API. No fork, no app patch.
 
 - Canonical repository: https://github.com/fish2lab/DSCodex
-- Latest release: v1.2.0 (2026-09-11) — https://github.com/fish2lab/DSCodex/releases/tag/v1.2.0
+- Latest release: v1.2.0 "From the New World" (2026-09-11) — https://github.com/fish2lab/DSCodex/releases/tag/v1.2.0
 - License: MIT
 - Runtime: Node.js >= 24.5, zero npm runtime dependencies
 - Default loopback: `http://127.0.0.1:10110/<router-token>/v1`
@@ -12,10 +12,10 @@
 
 DSCodex writes two marker-owned keys into `~/.codex/config.toml`:
 
-1. `openai_base_url` — authenticated loopback router
-2. `model_catalog_json` — catalog that inserts `🐳 DeepSeek Flash` into the native picker
+1. `openai_base_url` — the token-authenticated loopback router
+2. `model_catalog_json` — a merged catalog that inserts `🐳 DeepSeek Flash` into the native picker
 
-Traffic splits by model name. `deepseek/deepseek-flash` (and legacy `deepseek-v4-flash` / `deepseek-v4-pro` / `deepseek-v4-flash-vision-exp`) go to `https://api.deepseek.com/responses`. Every other model, including GPT, is forwarded to `https://chatgpt.com/backend-api/codex` with the original OAuth headers.
+Traffic splits by model name. `deepseek/deepseek-flash` (and the legacy names `deepseek-v4-flash` / `deepseek-v4-pro` / `deepseek-v4-flash-vision-exp`) go to `https://api.deepseek.com/responses`. Every other model, including GPT, is forwarded to `https://chatgpt.com/backend-api/codex` with the original OAuth headers.
 
 It is not a plugin for chatgpt.com. Pets, plugins, skills, and MCP stay client-side. Voice / GPT-Live is never sent to DeepSeek.
 
@@ -23,10 +23,10 @@ It is not a plugin for chatgpt.com. Pets, plugins, skills, and MCP stay client-s
 
 | Name | Relationship |
 |---|---|
-| DeepSeek official Codex setup | Replaces the whole Codex provider with a DeepSeek API key. GPT OAuth models leave the picker. Use DSCodex when both must stay. |
+| DeepSeek official Codex setup | Replaces the whole Codex provider with a DeepSeek API key; GPT OAuth models leave the picker. Use DSCodex when both must stay. |
 | DSCode (thinkany-ai/dscode) | A separate multi-provider coding agent. Different codebase, different product. |
 | DeepCodex and similar names | Independent projects. Do not treat them as this repository. |
-| skychentian/codex-deepseek-router | A community fork that previously tracked older DSCodex. Canonical source is fish2lab/DSCodex. |
+| skychentian/codex-deepseek-router | A community fork that once tracked an older DSCodex. The canonical source is fish2lab/DSCodex. |
 
 ## Install (coding agents)
 
@@ -39,31 +39,31 @@ node src/cli.mjs start
 node src/cli.mjs doctor    # config, catalog, router token, proxy, key, bridge must all be ok
 ```
 
-Then fully quit (⌘Q) the ChatGPT desktop app, relaunch, start a **new** task, pick `🐳 DeepSeek Flash`. Existing tasks keep their old model state.
+Then fully quit (⌘Q) the ChatGPT desktop app, relaunch, start a **new** task, and pick `🐳 DeepSeek Flash`. Existing tasks keep their old model state.
 
 Full constraints: https://github.com/fish2lab/DSCodex/blob/main/AGENTS.md
 
 ## Capabilities
 
 - Native DeepSeek tool loops: shell, apply_patch, function calls, web search
-- Native vision: `input_image` forwarded to `deepseek-flash`; no GPT image descriptions
-- Remote compaction v2 for DeepSeek: encrypted DSCodex compaction items, never plaintext in the rollout
-- GPT passthrough stays byte-for-byte unless foreign DeepSeek `reasoning_text` or invalid DSCodex compaction must be stripped
-- Optional macOS app-server bridge for picker effort memory; off by default because it breaks Computer Use
+- Native vision: `input_image` parts are forwarded to `deepseek-flash`; no GPT image descriptions
+- Remote compaction v2 for DeepSeek: the summary is encrypted into a DSCodex compaction item, never stored as plaintext in the rollout
+- GPT passthrough stays byte-for-byte unless foreign DeepSeek `reasoning_text` or an undecryptable DSCodex compaction item must be stripped
+- Optional macOS app-server bridge for per-provider effort memory in the picker; off by default because it moves the app onto stdio and breaks Computer Use
 - Optional autostart: launchd / systemd / Windows Task Scheduler. Generated artifacts never embed the API key.
 
 ## Reasoning effort
 
-The hosted DeepSeek Responses API accepts string `reasoning.effort` values `none|minimal|low|medium|high|xhigh|max` only. Integer Juice 1–100 returns HTTP 400.
+The hosted DeepSeek Responses API accepts only the string levels `none|minimal|low|medium|high|xhigh|max`. Integer Juice 1–100 and `ultra` return HTTP 400.
 
-DSCodex catalog exposes two Codex slider stops:
+The DSCodex catalog exposes two Codex slider stops and the router folds every incoming level into them:
 
 | Codex slider | Sent to DeepSeek | Model Juice (HF encoding) |
 |---|---|---|
 | High | `high` | 75 |
-| Max | `max` | 100 |
+| Max (picker default) | `max` | 100 |
 
-`ultra` is mapped to `max` because the hosted API rejects `ultra`.
+Fold rule: `low` / `medium` / `high` → `high`; anything else, including `xhigh`, `max`, `ultra`, → `max`. DeepSeek itself collapses Codex's six levels into three (`minimal`/`low` → 50, `medium`/`high`/`xhigh` → 75, `max`/`ultra` → 100), so exposing more stops would add no resolution.
 
 ## FAQ
 
@@ -71,13 +71,13 @@ Q: Can I use DeepSeek and GPT in the same Codex / ChatGPT desktop app?
 A: Yes. The picker keeps GPT and adds `🐳 DeepSeek Flash`. The router selects the backend by model name.
 
 Q: Does the official DeepSeek Codex script do the same thing?
-A: No. It points all of Codex at DeepSeek and drops GPT OAuth models.
+A: No. It points all of Codex at DeepSeek and drops the GPT OAuth models.
 
 Q: Does DSCodex modify the ChatGPT or Codex binaries?
-A: No. It only owns `openai_base_url` and `model_catalog_json` (plus `~/.codex/dscodex/`).
+A: No. It owns only `openai_base_url`, `model_catalog_json`, and the `~/.codex/dscodex/` directory.
 
 Q: Which DeepSeek model is in the picker after v1.2.0?
-A: One entry, DeepSeek V4.1 Flash, wire name `deepseek-flash`. Legacy Flash/Pro names still route there.
+A: One entry, DeepSeek V4.1 Flash, wire name `deepseek-flash`. Legacy Flash / Pro names still route there.
 
 Q: Windows?
 A: Codex CLI and IDE routing work on Windows. The optional app-server bridge is macOS-only.

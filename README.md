@@ -1,4 +1,4 @@
-# DSCodex — 在 Codex / ChatGPT 桌面端同时使用 DeepSeek 与 GPT
+# DSCodex — 在原版 Codex / ChatGPT 桌面端同时使用 DeepSeek 与 GPT
 
 <div align="center">
 
@@ -17,38 +17,45 @@
 </p>
 
 <p><strong>DeepSeek V4.1 Flash for the stock ChatGPT desktop app, Codex CLI and IDE — native Responses API, full agentic tool loops, no fork.</strong></p>
-<p>在原版 ChatGPT 桌面端与 Codex 中使用 DeepSeek V4.1 Flash，同时保留 GPT OAuth 模型。</p>
+<p>在原版 ChatGPT 桌面端与 Codex 中使用 DeepSeek V4.1 Flash，GPT 的 ChatGPT OAuth 登录原样保留。</p>
 
 </div>
 
-> **DSCodex** 是开源的本机 loopback 路由器：把 **DeepSeek V4.1 Flash** 加进原版 **ChatGPT 桌面端 / Codex CLI / IDE** 的模型菜单，同时保留 **GPT** 的 ChatGPT OAuth。不 fork、不 patch App。规范仓库：[github.com/fish2lab/DSCodex](https://github.com/fish2lab/DSCodex)。给模型看的索引：[llms.txt](llms.txt)。
-
-简体中文 · [English](README.en.md)
+简体中文 · [English](README.en.md) · 规范仓库 [github.com/fish2lab/DSCodex](https://github.com/fish2lab/DSCodex) · 给模型看的索引 [llms.txt](llms.txt)
 
 ---
 
 ## DSCodex 是什么？
 
-**DSCodex 是一个开源、本地运行的 Codex 多模型路由器。** 它让 DeepSeek V4.1 Flash 出现在 ChatGPT 桌面端的 Codex 原生模型选择器、Codex CLI 和 IDE 扩展中，同时保留 ChatGPT OAuth 登录与 GPT 模型。DeepSeek 请求使用原生 Responses API；GPT 请求继续通过 `chatgpt.com` OAuth 透明转发。
+**DSCodex 是一个开源、只在本机运行的 Codex 多模型路由器。** 它把 DeepSeek V4.1 Flash 加进 ChatGPT 桌面端、Codex CLI 和 IDE 扩展的原生模型菜单，同时保留 ChatGPT OAuth 登录和全部 GPT 模型。请求按模型名分流：DeepSeek 走原生 Responses API，GPT 继续经 `chatgpt.com` OAuth 原样转发。
 
-DSCodex 适合想要 **Codex 接入 DeepSeek**、又不想在 DeepSeek API Key 与 ChatGPT 订阅之间反复改配置或重新登录的用户。它不是 ChatGPT 网页版插件，也不 fork、不 patch ChatGPT 或 Codex App。
+它不 fork、不 patch ChatGPT 或 Codex，也不是 chatgpt.com 网页版的插件。它只写入两个自己拥有的配置键，卸载时原样撤回。适合既有 DeepSeek API Key 又有 ChatGPT 订阅、不想在两者之间反复改配置或重新登录的人。
 
-### 何时选择 DSCodex？
+### 与 DeepSeek 官方 Codex 接入的区别
 
-| 需求 | [DeepSeek 官方 Codex 直连](https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/codex/) | DSCodex |
+| | [DeepSeek 官方 Codex 直连](https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/codex/) | DSCodex |
 |---|---|---|
 | 在 Codex 使用 DeepSeek Flash | 支持 | 支持 |
-| 同一客户端保留 GPT OAuth 模型 | 切换到 API Key 登录；恢复配置后切回 | 按模型名路由，DeepSeek 与 GPT 同时留在模型菜单 |
-| DeepSeek API Key | 写入 `config.toml` 的 bearer token 字段 | 独立存储于 `~/.codex/dscodex/config.json`（0600；Windows DPAPI） |
-| Codex 兼容适配 | 直接连接 DeepSeek | 工具重放、上下文压缩、原生识图与 provider 状态适配 |
+| 同一客户端保留 GPT OAuth 模型 | 不保留：整个 Codex 切到 API Key 登录，切回要恢复配置 | 保留：按模型名分流，两者同时在菜单里 |
+| DeepSeek API Key 存放 | `config.toml` 的 bearer token 字段 | `~/.codex/dscodex/config.json`（0600；Windows DPAPI） |
+| Codex 兼容适配 | 无，直接连接 | 工具调用重放修复、上下文压缩、原生识图、provider 状态记忆 |
 
-## 2026-09-11 更新：V4.1 Flash
+## 当前模型：DeepSeek V4.1 Flash
 
-模型菜单统一为 `🐳 DeepSeek Flash`，API 名称为 `deepseek-flash`，当前对应 **DeepSeek V4.1 Flash**。官方提供 1M 上下文、最高 384K 输出、原生视觉及 Responses API 工具调用。高峰期每百万 token 的缓存命中输入 / 未命中输入 / 输出价格分别为 **$0.006 / $0.30 / $1.20**，低谷期减半；价格与能力以[官方模型说明](https://api-docs.deepseek.com/quick_start/pricing/)为准。
+模型菜单只有一条 `🐳 DeepSeek Flash`，API 名 `deepseek-flash`，对应 **DeepSeek V4.1 Flash**：1M 上下文、最高 384K 输出、原生视觉、Responses API 工具调用。旧的 `deepseek-v4-flash` / `deepseek-v4-pro` / `deepseek-v4-flash-vision-exp` 名称仍可路由，恢复旧任务不需要改模型设置。
 
-DeepSeek 宣布于 **2026-09-14 12:00（北京时间）**开始将 V4 Pro 请求转到 V4.1 Flash，并按 Flash 计费。DSCodex 本次已将旧 Flash / Pro 名称统一映射到 Flash，保留旧任务兼容，不修改用户保存的模型设置。“全面超过 V4 Pro”是官方测试结论，本项目未进行独立模型排名评测。
+官方牌价（每百万 token，高峰期）：缓存命中输入 **$0.006**、未命中输入 **$0.30**、输出 **$1.20**，低谷期减半。DeepSeek 计划于 **2026-09-14 12:00（北京时间）**起把 V4 Pro 请求转到 V4.1 Flash 并按 Flash 计费。「全面超过 V4 Pro」是官方测试结论，本项目未做独立评测。能力与价格以[官方模型说明](https://api-docs.deepseek.com/quick_start/pricing/)为准。
 
-本次还改为直接传递图片，移除路由中的 GPT 代读；修复 DeepSeek → GPT 历史切换及自启动交接失败后的路由恢复。macOS 实测 107 项通过、6 项 Windows 原生测试跳过；真实 shell 工具闭环和原生图片识别通过。已加入 macOS / Windows / Linux CI；Windows 实机兼容与语音 PR #21 仍待验收。
+### 思考强度
+
+托管 Responses API 只接受字符串档位 `none / minimal / low / medium / high / xhigh / max`。整数 Juice（1–100）和 `ultra` 都返回 HTTP 400，尽管模型卡写了连续 Juice、文档写了 `ultra` 会映射到 `max`。DSCodex 的目录只暴露两档，路由器把收到的任何档位折进这两档：
+
+| Codex 滑块 | 发给 DeepSeek | 模型 Juice |
+|---|---|---|
+| High | `high` | 75 |
+| Max（菜单默认） | `max` | 100 |
+
+折算规则：`low` / `medium` / `high` → `high`，其余（含 `xhigh`、`max`、`ultra`）→ `max`。不展开六档，是因为官方本身把 Codex 六档收成三档：`minimal` / `low` → 50，`medium` / `high` / `xhigh` → 75，`max` / `ultra` → 100。Medium、High、Extra High 指向同一个 Juice，多出的档位没有分辨率。两档也对准 DeepSeek 给 agent 场景的建议：日常 `high`，难题 `max`。
 
 ## 快速开始
 
@@ -59,7 +66,7 @@ DeepSeek 宣布于 **2026-09-14 12:00（北京时间）**开始将 V4 Pro 请求
 克隆仓库后让 Agent 读本 README 或 `AGENTS.md`：
 
 ```bash
-# 1. 存入 API Key（不打印不进仓库，0600 / Windows DPAPI）
+# 1. 存入 API Key（不打印、不进仓库；0600 / Windows DPAPI）
 DEEPSEEK_API_KEY=sk-... node src/cli.mjs key set
 
 # 2. 安装、启动、验证
@@ -67,29 +74,29 @@ node src/cli.mjs install
 node src/cli.mjs start
 node src/cli.mjs doctor    # 六项必须全部 ok
 
-# 3. 验证
+# 3. 跑测试
 npm test
 ```
 
-完全退出（⌘Q）重开 ChatGPT 桌面端，新建任务选择 `🐳 DeepSeek Flash`。
+完全退出（⌘Q）再重开 ChatGPT 桌面端，**新建任务**，在模型菜单选 `🐳 DeepSeek Flash`。已有任务保留旧模型状态。
 
 ### 手动安装
 
 ```bash
 node src/cli.mjs key set
-node src/cli.mjs proxy set http://127.0.0.1:10808   # 可选
+node src/cli.mjs proxy set http://127.0.0.1:10808   # 可选：GPT 直通走的出站代理
 node src/cli.mjs install && node src/cli.mjs start && node src/cli.mjs doctor
-node src/cli.mjs autostart enable   # 可选：登录自启；路由崩溃后自动恢复
+node src/cli.mjs autostart enable   # 可选：登录自启，路由崩溃后自动拉起
 ```
 
-CLI 默认 **High**；加 `-c 'model_reasoning_effort="max"'` 使用 **Max**。
+CLI 用 `-m` 选模型，用 `-c` 显式指定档位（不写则由 Codex 自己的默认档位经上表折算）：
 
 ```bash
 codex -m deepseek/deepseek-flash -c 'model_reasoning_effort="max"'
 ```
 
-所有命令：`install` `sync` `key set|status|delete` `proxy set|status|clear` `start` `serve`
-`autostart enable|disable|status` `status` `doctor` `stop` `uninstall`
+全部命令：`install` `sync` `key set|status|delete` `proxy set|status|clear` `start` `serve`
+`autostart enable|disable|status` `bridge enable|disable|status` `status` `doctor` `stop` `uninstall`
 
 ## 架构
 
@@ -97,14 +104,14 @@ codex -m deepseek/deepseek-flash -c 'model_reasoning_effort="max"'
 Codex App / CLI / IDE
         │  HTTP/SSE（zstd 压缩、OAuth 头）
         ▼
-http://127.0.0.1:10110/<router-token>/v1   ← DSCodex 本地路由
+http://127.0.0.1:10110/<router-token>/v1   ← DSCodex 本机路由器
         │
         ├── DeepSeek 模型 → api.deepseek.com/responses
-        │     （图片原生输入；旧 Flash / Pro 名称兼容映射到 Flash）
+        │     （图片原生输入；旧 Flash / Pro 名称映射到 Flash）
         └── 其他模型     → chatgpt.com/backend-api/codex（OAuth 原样转发）
 ```
 
-按模型名分流。DeepSeek 请求适配其 API；GPT 请求只在包含外来 reasoning 或 DSCodex 压缩项时转换，其余保持原始字节。
+按模型名分流。DeepSeek 请求按其 API 的要求改写；GPT 请求只在历史里含有外来 reasoning 或 DSCodex 压缩项时才改写，其余保持原始字节。
 
 ## 兼容性
 
@@ -114,45 +121,46 @@ http://127.0.0.1:10110/<router-token>/v1   ← DSCodex 本地路由
 | Codex CLI / IDE 扩展 | 支持 |
 | Windows 原生（Codex CLI / IDE 扩展） | 支持 |
 | DeepSeek 多轮工具调用（shell / apply_patch / function call / web search） | 原生 Responses API |
-| 上下文压缩（自动 / 手动） | 支持 — DeepSeek 摘要加密封装为 Codex 压缩项 |
-| GPT / Codex OAuth 模型 | 透明旁路 |
-| app-server bridge（桌面端模型菜单状态记忆） | 可选，macOS 专属；默认不启以保 Computer Use |
-| chatgpt.com 网页版 | 不支持（接入的是本地 Codex 运行时） |
+| 上下文压缩（自动 / 手动） | 支持：DeepSeek 摘要加密后封装为 Codex 压缩项 |
+| GPT / Codex OAuth 模型 | 透明直通 |
+| app-server bridge（桌面端按 provider 记忆档位） | 可选，仅 macOS；默认关闭以保住 Computer Use |
+| chatgpt.com 网页版 | 不支持：接入的是本地 Codex 运行时 |
 
 ## 常见问题
 
 ### 如何在 Codex / ChatGPT 桌面端里用 DeepSeek V4.1 Flash，同时保留 GPT？
 
-装 DSCodex，完全退出后重开 ChatGPT 桌面端，**新建任务**，在模型菜单选 `🐳 DeepSeek Flash`。GPT 仍走 ChatGPT OAuth，切换模型不必改登录、不必重写 `config.toml` 的 provider。
+装 DSCodex，完全退出后重开 ChatGPT 桌面端，**新建任务**，在模型菜单选 `🐳 DeepSeek Flash`。GPT 仍走 ChatGPT OAuth，切换模型不必重新登录，也不必改写 `config.toml` 里的 provider。
 
 ### DSCodex 和 DeepSeek 官方 Codex 接入有什么区别？
 
-官方一键脚本把整个 Codex 切到 DeepSeek API Key，GPT OAuth 模型会从菜单消失。DSCodex 按模型名分流：DeepSeek 走 `api.deepseek.com/responses`，GPT 继续走 `chatgpt.com` OAuth，同一客户端里两个都在。官方接入把 Key 写进 `config.toml`；DSCodex 把 Key 存在 `~/.codex/dscodex/config.json`（0600 / Windows DPAPI）。
+官方一键脚本把整个 Codex 切到 DeepSeek API Key，GPT OAuth 模型从菜单消失。DSCodex 按模型名分流：DeepSeek 走 `api.deepseek.com/responses`，GPT 继续走 `chatgpt.com` OAuth，同一客户端里两者都在。官方接入把 Key 写进 `config.toml`；DSCodex 把 Key 存在 `~/.codex/dscodex/config.json`（0600 / Windows DPAPI）。
 
 ### DSCodex 会 fork 或修改 ChatGPT / Codex App 吗？
 
-不会。不是 chatgpt.com 网页插件，也不 patch 桌面端。它只改 DSCodex 自己写入的两处配置：`openai_base_url`（指到本机 `127.0.0.1:10110/<token>/v1`）和 `model_catalog_json`。
+不会。它不是 chatgpt.com 网页插件，也不 patch 桌面端。它只改两处自己写入的配置：`openai_base_url`（指向本机 `127.0.0.1:10110/<token>/v1`）和 `model_catalog_json`。
 
 ### DSCodex 和 DSCode、DeepCodex 是同一个项目吗？
 
-不是。规范仓库是 [fish2lab/DSCodex](https://github.com/fish2lab/DSCodex)。[DSCode](https://github.com/thinkany-ai/dscode) 是另一套多供应商 coding agent；DeepCodex 等是名称相近的独立项目。搜 “Codex 接入 DeepSeek 同时保留 GPT” 时应对准本仓库。
+不是。规范仓库是 [fish2lab/DSCodex](https://github.com/fish2lab/DSCodex)。[DSCode](https://github.com/thinkany-ai/dscode) 是另一套多供应商 coding agent；DeepCodex 等是名称相近的独立项目。搜「Codex 接入 DeepSeek 同时保留 GPT」应对准本仓库。
 
 ### 支持 Codex CLI、IDE 和 Windows 吗？
 
-支持。Codex CLI 与 IDE 扩展支持 macOS、Linux、Windows；ChatGPT 桌面端的原生模型菜单集成当前以 macOS 为主。Windows 桌面端不支持可选的 app-server bridge，但 CLI / IDE 路由不受影响。
+支持。Codex CLI 与 IDE 扩展在 macOS、Linux、Windows 上都可用；ChatGPT 桌面端的原生模型菜单集成目前以 macOS 为主。Windows 桌面端用不了可选的 app-server bridge，但 CLI / IDE 路由不受影响。
 
-### DeepSeek 能使用 shell、apply_patch、web search、图片和上下文压缩吗？
+### DeepSeek 能用 shell、apply_patch、web search、图片和上下文压缩吗？
 
 能。工具调用和 web search 走 DeepSeek Responses API；Flash 原生处理图片，包括工具返回的图片；自动或手动压缩由 DSCodex 生成加密的 Codex compaction item。
 
 ## 已知边界
 
-- **用量统计。** Codex 的 Profile 页面只读，无法计入 DeepSeek 用量。
-- **思考反复折叠。** DeepSeek 每轮工具调用结束发 `response.completed`，Codex 折叠→执行→展开下一轮思考。这是 API 行为。无工具的单轮只折叠一次。
-- **原生识图。** 图片与工具返回的图片直接交给 `deepseek-flash`，不再借用 GPT；`DSCODEX_VISION_MODEL` 不再生效。
-- **Key 存储、代理解析、bridge 细节、平台差异。** 详见 `AGENTS.md`。
-- **Voice。** GPT-Live 不发给 DeepSeek；Realtime 路由兼容仍待 PR #21 验收。Pets、插件、技能与 MCP 仍由客户端处理。
-- **DeepSeek → GPT 任务历史。** 路由器过滤外来明文 reasoning，将自身加密的压缩摘要恢复为助手上下文；保留 GPT 原生 reasoning，普通请求保持原始字节，不改写 rollout 文件。
+- **用量统计。** Codex 的 Profile 页面只读，DeepSeek 用量无法计入。
+- **思考块反复折叠。** DeepSeek 每轮工具调用结束都发 `response.completed`，Codex 随之折叠思考、执行工具、再展开下一轮。这是 API 行为，不是 bug；无工具的单轮只折叠一次。
+- **原生识图。** 图片和工具返回的图片直接交给 `deepseek-flash`，不再借 GPT 代读；`DSCODEX_VISION_MODEL` 不再生效。
+- **DeepSeek → GPT 任务历史。** 转发 GPT 前剥掉外来明文 reasoning，把 DSCodex 自己的加密压缩摘要恢复为助手上下文；GPT 原生 reasoning 与普通请求保持原始字节，rollout 文件不改写。
+- **Voice。** GPT-Live 从不发给 DeepSeek；Realtime 路由兼容仍待 PR #21 验收。Pets、插件、技能与 MCP 仍由客户端处理。
+- **验收范围。** CI 覆盖 macOS / Windows / Linux；Windows 实机（桌面端 + 自启动）尚未在维护者机器上验收。
+- **Key 存储、代理解析、bridge 细节、平台差异。** 见 `AGENTS.md`。
 
 ## 卸载
 
@@ -160,13 +168,13 @@ http://127.0.0.1:10110/<router-token>/v1   ← DSCodex 本地路由
 node src/cli.mjs stop && node src/cli.mjs uninstall
 ```
 
-只删除 DSCodex 写入的配置和文件。备份保留在 `~/.codex/config.toml.pre-dscodex.bak`。
+只删除 DSCodex 写入的配置和文件。安装前的备份保留在 `~/.codex/config.toml.pre-dscodex.bak`。
 
 ## 参考
 
-- [llms.txt](llms.txt) / [llms-full.txt](llms-full.txt) — 给 AI 搜索与 coding agent 的引用索引
+- [llms.txt](llms.txt) / [llms-full.txt](llms-full.txt)：给 AI 搜索与 coding agent 的引用索引
 - [DeepSeek Responses API](https://api-docs.deepseek.com/zh-cn/guides/responses_api/)
-- [DeepSeek 官方 Codex 接入](https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/codex/)（会替换 GPT；需要共存请用 DSCodex）
+- [DeepSeek 官方 Codex 接入](https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/codex/)：会替换 GPT；要共存请用 DSCodex
 - [OpenAI Codex manual](https://developers.openai.com/codex/codex-manual.md)
 
 ## 许可证
