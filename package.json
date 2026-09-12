@@ -1,9 +1,9 @@
 {
   "name": "dscodex",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "type": "module",
-  "description": "Use DeepSeek V4.1 Flash and GPT side by side in stock ChatGPT/Codex via a local Responses API router",
+  "description": "Use DeepSeek V4.1 Flash and GPT side by side in stock ChatGPT/Codex via a local Responses API router, including official GPT WebSocket reconnect",
   "keywords": [
     "deepseek",
     "deepseek-flash",
@@ -11,6 +11,8 @@
     "chatgpt",
     "openai",
     "responses-api",
+    "websocket",
+    "reconnect",
     "coding-agent",
     "llm-router"
   ],
@@ -36,5 +38,8 @@
   "engines": {
     "node": ">=24.5"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.21.3"
+  }
 }

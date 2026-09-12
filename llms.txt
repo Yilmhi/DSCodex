@@ -1,12 +1,12 @@
 # DSCodex
 
-> DSCodex is an open-source loopback router that adds DeepSeek V4.1 Flash to the model picker of the stock ChatGPT desktop app, Codex CLI, and Codex IDE extension while keeping GPT on ChatGPT OAuth. It runs only on the user's machine and does not fork or patch Codex.
+> DSCodex is an open-source loopback router that adds DeepSeek V4.1 Flash to the model picker of the stock ChatGPT desktop app, Codex CLI, and Codex IDE extension while keeping GPT on ChatGPT OAuth, including the desktop app's Responses WebSocket. It runs only on the user's machine and does not fork or patch Codex.
 
 Canonical repository: https://github.com/fish2lab/DSCodex
-Latest release: https://github.com/fish2lab/DSCodex/releases/tag/v1.2.0
+Latest release: https://github.com/fish2lab/DSCodex/releases/tag/v1.2.1
 License: MIT
 
-DSCodex is not DeepSeek's official Codex setup (that setup replaces GPT with an API-key provider). It is not DSCode (https://github.com/thinkany-ai/dscode), not DeepCodex, and not a chatgpt.com web plugin.
+DSCodex is not DeepSeek's official Codex setup (that setup replaces GPT with an API-key provider). It is not DSCode (https://github.com/thinkany-ai/dscode), not DeepCodex, not CLIProxyAPI, and not a chatgpt.com web plugin.
 
 ## Docs
 
@@ -19,13 +19,14 @@ DSCodex is not DeepSeek's official Codex setup (that setup replaces GPT with an 
 ## Key facts
 
 - Picker entry: `🐳 DeepSeek Flash` (slug `deepseek/deepseek-flash`, wire name `deepseek-flash`, currently DeepSeek V4.1 Flash)
-- DeepSeek path: native Responses API at `api.deepseek.com/responses` (tool loops, native vision, encrypted compaction)
-- GPT path: unmodified OAuth passthrough to `chatgpt.com/backend-api/codex`
-- Install: `node src/cli.mjs key set` → `install` → `start` → `doctor` (six checks)
+- DeepSeek path: native Responses API over HTTP at `api.deepseek.com/responses` (tool loops, native vision, encrypted compaction). DeepSeek is never forwarded onto OpenAI's WebSocket.
+- GPT path: OAuth passthrough to `chatgpt.com/backend-api/codex`, HTTP SSE and Responses WebSocket (`ws://127.0.0.1:10110/<token>/v1/responses` proxied to `wss://chatgpt.com/backend-api/codex/responses`). If the loopback router is down, the ChatGPT desktop app shows Reconnecting 1/5…5/5.
+- Install: `npm install` → `node src/cli.mjs key set` → `install` → `start` → `doctor` (six checks). Runtime dependency: `ws`.
 - Platforms: macOS / Linux / Windows; the ChatGPT desktop picker integration is macOS-first
 - Reasoning effort: the catalog exposes High (`high`, Juice 75) and Max (`max`, Juice 100; picker default). The router folds `low`/`medium`/`high` to `high` and everything else to `max`. The hosted DeepSeek API rejects integer Juice 1–100 and `ultra` with HTTP 400.
 
 ## Optional
 
+- [v1.2.1 — Keep the Wire](https://github.com/fish2lab/DSCodex/releases/tag/v1.2.1): official GPT Responses WebSocket passthrough so ChatGPT desktop reconnects; DeepSeek stays on HTTP Responses
 - [v1.2.0 — From the New World](https://github.com/fish2lab/DSCodex/releases/tag/v1.2.0): V4.1 Flash, native vision, DeepSeek → GPT replay fix, router recovery
 - [Official DeepSeek Codex setup](https://api-docs.deepseek.com/quick_start/agent_integrations/codex/): the alternative that does not keep GPT

@@ -69,12 +69,15 @@
 # 1. 存入 API Key（不打印、不进仓库；0600 / Windows DPAPI）
 DEEPSEEK_API_KEY=sk-... node src/cli.mjs key set
 
-# 2. 安装、启动、验证
+# 2. 安装依赖（路由器的 Responses WebSocket 服务端需要 ws）
+npm install
+
+# 3. 安装、启动、验证
 node src/cli.mjs install
 node src/cli.mjs start
 node src/cli.mjs doctor    # 六项必须全部 ok
 
-# 3. 跑测试
+# 4. 跑测试
 npm test
 ```
 
@@ -102,13 +105,15 @@ codex -m deepseek/deepseek-flash -c 'model_reasoning_effort="max"'
 
 ```text
 Codex App / CLI / IDE
-        │  HTTP/SSE（zstd 压缩、OAuth 头）
+        │  HTTP/SSE 与 Responses WebSocket（zstd、OAuth 头）
         ▼
 http://127.0.0.1:10110/<router-token>/v1   ← DSCodex 本机路由器
         │
-        ├── DeepSeek 模型 → api.deepseek.com/responses
+        ├── DeepSeek 模型 → api.deepseek.com/responses（HTTP）
         │     （图片原生输入；旧 Flash / Pro 名称映射到 Flash）
-        └── 其他模型     → chatgpt.com/backend-api/codex（OAuth 原样转发）
+        └── 其他模型     → chatgpt.com/backend-api/codex
+              HTTP SSE 原样转发；WebSocket upgrade 透传到
+              wss://chatgpt.com/backend-api/codex/responses
 ```
 
 按模型名分流。DeepSeek 请求按其 API 的要求改写；GPT 请求只在历史里含有外来 reasoning 或 DSCodex 压缩项时才改写，其余保持原始字节。
@@ -122,11 +127,15 @@ http://127.0.0.1:10110/<router-token>/v1   ← DSCodex 本机路由器
 | Windows 原生（Codex CLI / IDE 扩展） | 支持 |
 | DeepSeek 多轮工具调用（shell / apply_patch / function call / web search） | 原生 Responses API |
 | 上下文压缩（自动 / 手动） | 支持：DeepSeek 摘要加密后封装为 Codex 压缩项 |
-| GPT / Codex OAuth 模型 | 透明直通 |
+| GPT / Codex OAuth 模型 | 透明直通（HTTP SSE 与 Responses WebSocket） |
 | app-server bridge（桌面端按 provider 记忆档位） | 可选，仅 macOS；默认关闭以保住 Computer Use |
 | chatgpt.com 网页版 | 不支持：接入的是本地 Codex 运行时 |
 
 ## 常见问题
+
+### 装完 DSCodex 后官方 GPT 一直 Reconnecting 1/5…5/5？
+
+ChatGPT 桌面端 26.908+ 会先连 `ws://127.0.0.1:10110/<token>/v1/responses`。路由器必须在跑（`dscodex start`，建议 `autostart enable`），GPT 的 upgrade 才会透传到 `wss://chatgpt.com/backend-api/codex/responses`。路由器停掉时官方模型会 Connection refused 后 5/5。DeepSeek 仍走 HTTP Responses，不会接到 OpenAI 的 WebSocket 上。
 
 ### 如何在 Codex / ChatGPT 桌面端里用 DeepSeek V4.1 Flash，同时保留 GPT？
 
@@ -134,7 +143,7 @@ http://127.0.0.1:10110/<router-token>/v1   ← DSCodex 本机路由器
 
 ### DSCodex 和 DeepSeek 官方 Codex 接入有什么区别？
 
-官方一键脚本把整个 Codex 切到 DeepSeek API Key，GPT OAuth 模型从菜单消失。DSCodex 按模型名分流：DeepSeek 走 `api.deepseek.com/responses`，GPT 继续走 `chatgpt.com` OAuth，同一客户端里两者都在。官方接入把 Key 写进 `config.toml`；DSCodex 把 Key 存在 `~/.codex/dscodex/config.json`（0600 / Windows DPAPI）。
+官方一键脚本把整个 Codex 切到 DeepSeek API Key，GPT OAuth 模型从菜单消失。DSCodex 按模型名分流：DeepSeek 走 `api.deepseek.com/responses`，GPT 继续走 `chatgpt.com` OAuth（含 Responses WebSocket），同一客户端里两者都在。官方接入把 Key 写进 `config.toml`；DSCodex 把 Key 存在 `~/.codex/dscodex/config.json`（0600 / Windows DPAPI）。CLIProxyAPI / Codexia 一类网关也能给 Codex 加自定义模型，但不做 DSCodex 这条 DeepSeek 工具重放修复和加密 compaction。
 
 ### DSCodex 会 fork 或修改 ChatGPT / Codex App 吗？
 
@@ -157,7 +166,8 @@ http://127.0.0.1:10110/<router-token>/v1   ← DSCodex 本机路由器
 - **用量统计。** Codex 的 Profile 页面只读，DeepSeek 用量无法计入。
 - **思考块反复折叠。** DeepSeek 每轮工具调用结束都发 `response.completed`，Codex 随之折叠思考、执行工具、再展开下一轮。这是 API 行为，不是 bug；无工具的单轮只折叠一次。
 - **原生识图。** 图片和工具返回的图片直接交给 `deepseek-flash`，不再借 GPT 代读；`DSCODEX_VISION_MODEL` 不再生效。
-- **DeepSeek → GPT 任务历史。** 转发 GPT 前剥掉外来明文 reasoning，把 DSCodex 自己的加密压缩摘要恢复为助手上下文；GPT 原生 reasoning 与普通请求保持原始字节，rollout 文件不改写。
+- **DeepSeek → GPT 任务历史。** 转发 GPT 前剥掉外来明文 reasoning，把 DSCodex 自己的加密压缩摘要恢复为助手上下文；GPT 原生 reasoning 与普通请求保持原始字节，rollout 文件不改写。HTTP SSE 与每条 Responses WebSocket `response.create` 都做这件事。
+- **官方 GPT WebSocket。** 桌面端 26.908+ 先连 loopback WS。路由器必须在跑，upgrade 才会透传到 chatgpt.com；停掉就 Reconnecting 5/5。DeepSeek 若被打到同一条 WS，close 1008 后回 HTTP Responses。
 - **Voice。** GPT-Live 从不发给 DeepSeek；Realtime 路由兼容仍待 PR #21 验收。Pets、插件、技能与 MCP 仍由客户端处理。
 - **验收范围。** CI 覆盖 macOS / Windows / Linux；Windows 实机（桌面端 + 自启动）尚未在维护者机器上验收。
 - **Key 存储、代理解析、bridge 细节、平台差异。** 见 `AGENTS.md`。

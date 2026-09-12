@@ -68,12 +68,15 @@ Clone the repo and point your agent at this README or `AGENTS.md`:
 # 1. Persist the API key (never printed, never committed; 0600 / Windows DPAPI)
 DEEPSEEK_API_KEY=sk-... node src/cli.mjs key set
 
-# 2. Install, start, verify
+# 2. Install runtime deps (the Responses WebSocket server needs `ws`)
+npm install
+
+# 3. Install, start, verify
 node src/cli.mjs install
 node src/cli.mjs start
 node src/cli.mjs doctor    # all six checks must say ok
 
-# 3. Run the tests
+# 4. Run the tests
 npm test
 ```
 
@@ -101,13 +104,15 @@ All commands: `install` `sync` `key set|status|delete` `proxy set|status|clear` 
 
 ```text
 Codex App / CLI / IDE
-        │  HTTP/SSE (zstd, OAuth headers)
+        │  HTTP/SSE and Responses WebSocket (zstd, OAuth headers)
         ▼
 http://127.0.0.1:10110/<router-token>/v1   ← DSCodex loopback router
         │
-        ├── DeepSeek model → api.deepseek.com/responses
+        ├── DeepSeek model → api.deepseek.com/responses (HTTP)
         │     (native images; legacy Flash / Pro names map to Flash)
-        └── any other     → chatgpt.com/backend-api/codex (untouched OAuth)
+        └── any other     → chatgpt.com/backend-api/codex
+              HTTP SSE passthrough; WebSocket upgrades proxied to
+              wss://chatgpt.com/backend-api/codex/responses
 ```
 
 Traffic splits by model name. DeepSeek requests are rewritten to what its API requires. GPT requests are rewritten only when the history carries foreign reasoning or DSCodex compaction items; otherwise the original bytes pass through.
@@ -121,11 +126,15 @@ Traffic splits by model name. DeepSeek requests are rewritten to what its API re
 | Native Windows (Codex CLI / IDE) | Supported |
 | Multi-round DeepSeek tool calls (shell / apply_patch / function call / web search) | Native Responses API |
 | Context compaction (auto / manual) | Supported: the DeepSeek summary is encrypted and wrapped as a Codex compaction item |
-| GPT / Codex OAuth models | Transparent passthrough |
+| GPT / Codex OAuth models | Transparent passthrough (HTTP SSE and Responses WebSocket) |
 | app-server bridge (per-provider effort memory in the desktop app) | Optional, macOS only; off by default to keep Computer Use working |
 | chatgpt.com web app | Not supported: DSCodex hooks the local Codex runtime |
 
 ## Frequently asked questions
+
+### Official GPT models sit on Reconnecting 1/5…5/5 after installing DSCodex?
+
+The ChatGPT desktop app 26.908+ dials `ws://127.0.0.1:10110/<token>/v1/responses` first. The router has to be running (`dscodex start`, preferably `autostart enable`) so that upgrade is proxied to `wss://chatgpt.com/backend-api/codex/responses`. If the router is down, official models get Connection refused and retry 5/5. DeepSeek stays on HTTP Responses and is never forwarded onto OpenAI's WebSocket.
 
 ### How do I use DeepSeek V4.1 Flash in Codex / ChatGPT desktop without losing GPT?
 
@@ -133,7 +142,7 @@ Install DSCodex, fully quit and relaunch the ChatGPT app, start a **new** task, 
 
 ### How is DSCodex different from DeepSeek's official Codex setup?
 
-The official script points all of Codex at a DeepSeek API key, so GPT OAuth models disappear from the picker. DSCodex splits by model name: DeepSeek goes to `api.deepseek.com/responses`, GPT stays on `chatgpt.com` OAuth, and both remain in the same client. The official setup writes the key into `config.toml`; DSCodex keeps it in `~/.codex/dscodex/config.json` (0600 / Windows DPAPI).
+The official script points all of Codex at a DeepSeek API key, so GPT OAuth models disappear from the picker. DSCodex splits by model name: DeepSeek goes to `api.deepseek.com/responses`, GPT stays on `chatgpt.com` OAuth (including Responses WebSocket), and both remain in the same client. The official setup writes the key into `config.toml`; DSCodex keeps it in `~/.codex/dscodex/config.json` (0600 / Windows DPAPI). Gateways such as CLIProxyAPI or Codexia can also add custom models to Codex; they do not implement DSCodex's DeepSeek tool-replay repair or encrypted compaction.
 
 ### Does DSCodex fork or patch ChatGPT / Codex?
 
@@ -156,7 +165,8 @@ Yes. Tool calls and web search go through DeepSeek's Responses API. Flash handle
 - **Usage stats.** The Codex Profile page is read-only, so DeepSeek usage cannot be added to it.
 - **Reasoning folds mid-task.** DeepSeek emits `response.completed` after every tool round; Codex folds the reasoning block, runs the tool, and opens the next round. This is API behavior, not a bug. Tool-free turns fold once at the end.
 - **Native vision.** Images and tool-returned images go straight to `deepseek-flash`; GPT image descriptions and `DSCODEX_VISION_MODEL` are no longer used.
-- **DeepSeek → GPT thread history.** Before forwarding to GPT the router strips foreign plaintext reasoning and restores its own encrypted compaction summary as assistant context. Native GPT reasoning and ordinary requests keep their original bytes; rollout files are never rewritten.
+- **DeepSeek → GPT thread history.** Before forwarding to GPT the router strips foreign plaintext reasoning and restores its own encrypted compaction summary as assistant context. Native GPT reasoning and ordinary requests keep their original bytes; rollout files are never rewritten. The same rewrite runs on HTTP SSE and on every Responses WebSocket `response.create`.
+- **Official GPT WebSocket.** Desktop 26.908+ dials the loopback WS first. The router has to be running for that upgrade to reach chatgpt.com; if it is down, official models Reconnecting 5/5. A DeepSeek model on the same socket is closed with 1008 so the client falls back to HTTP Responses.
 - **Voice.** GPT-Live is never sent to DeepSeek. Realtime routing compatibility is pending PR #21 validation. Pets, plugins, skills and MCP remain client-side.
 - **Acceptance scope.** CI covers macOS / Windows / Linux. Windows on real hardware (desktop app plus autostart) has not been accepted on the maintainer's machine.
 - **Key storage, proxy resolution, bridge details, platform differences.** See `AGENTS.md`.

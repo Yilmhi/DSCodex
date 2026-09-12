@@ -4,7 +4,9 @@ import net from "node:net";
 import test from "node:test";
 import { once } from "node:events";
 import { gzipSync, zstdCompressSync } from "node:zlib";
+import { WebSocket, WebSocketServer } from "ws";
 import { buildDeepSeekBody, createProxyServer } from "../src/proxy.mjs";
+import { requestModel, safeCloseCode, websocketTarget } from "../src/websocket-proxy.mjs";
 
 const ROUTER_TOKEN = "A".repeat(43);
 
@@ -20,6 +22,7 @@ async function listen(server) {
 }
 
 async function close(server) {
+  server.closeAllConnections?.();
   server.close();
   await once(server, "close");
 }
@@ -741,4 +744,337 @@ test("ordinary compressed GPT traffic preserves exact bytes", async (t) => {
   assert.equal(response.status, 200);
   assert.deepEqual(observed.raw, body);
   assert.equal(observed.headers['content-encoding'], 'gzip');
+});
+
+function wsRoute(proxyUrl, path = "/v1/responses") {
+  return route(proxyUrl, path).replace(/^http/, "ws");
+}
+
+async function listenWsUpstream() {
+  const server = http.createServer();
+  const wss = new WebSocketServer({ noServer: true });
+  const state = { urls: [], headers: [], messages: [], sockets: [] };
+  server.on("upgrade", (request, socket, head) => {
+    state.urls.push(request.url);
+    state.headers.push(request.headers);
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      state.sockets.push(ws);
+      ws.on("message", (data) => state.messages.push(data.toString()));
+    });
+  });
+  const url = await listen(server);
+  return { server, wss, state, url };
+}
+
+function waitUntil(predicate, timeoutMs = 2000) {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (predicate()) {
+        clearInterval(timer);
+        resolve();
+      } else if (Date.now() - started > timeoutMs) {
+        clearInterval(timer);
+        reject(new Error("timed out"));
+      }
+    }, 10);
+  });
+}
+
+function openClient(url, headers) {
+  const client = new WebSocket(url, headers ? { headers } : undefined);
+  const opened = Promise.race([
+    once(client, "open"),
+    once(client, "error").then(([error]) => { throw error; }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("websocket open timed out")), 2000)),
+  ]).then(() => client);
+  return { client, opened };
+}
+
+test("websocketTarget rewrites the Codex responses path onto chatgpt.com", () => {
+  assert.equal(
+    websocketTarget("https://chatgpt.com/backend-api/codex", "/v1/responses"),
+    "wss://chatgpt.com/backend-api/codex/responses",
+  );
+  assert.equal(
+    websocketTarget("http://127.0.0.1:9", "/v1/responses", "?session_id=abc"),
+    "ws://127.0.0.1:9/responses?session_id=abc",
+  );
+});
+
+test("requestModel reads nested Codex websocket envelopes", () => {
+  assert.equal(requestModel({ model: "gpt-6-astra" }), "gpt-6-astra");
+  assert.equal(requestModel({ payload: { model: "deepseek/deepseek-flash" } }), "deepseek/deepseek-flash");
+  assert.equal(requestModel({ response: { model: "gpt-5.6-sol" } }), "gpt-5.6-sol");
+  assert.equal(requestModel(null), undefined);
+});
+
+test("safeCloseCode never emits RFC-forbidden 1005/1006/1015", () => {
+  assert.equal(safeCloseCode(1000), 1000);
+  assert.equal(safeCloseCode(1008), 1008);
+  assert.equal(safeCloseCode(1011), 1011);
+  assert.equal(safeCloseCode(1005), 1000);
+  assert.equal(safeCloseCode(1006), 1000);
+  assert.equal(safeCloseCode(1015), 1000);
+  assert.equal(safeCloseCode(undefined), 1000);
+});
+
+test("unauthorized websocket probes still get 426", async (t) => {
+  const proxy = createProxyServer({
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+  });
+  await listen(proxy);
+  t.after(async () => { await close(proxy); });
+  const { port } = proxy.address();
+  const socket = net.connect(port, "127.0.0.1");
+  await once(socket, "connect");
+  socket.write(
+    "GET /v1/responses HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+    + "Connection: Upgrade\r\nUpgrade: websocket\r\n"
+    + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+  );
+  const [chunk] = await once(socket, "data");
+  assert.match(chunk.toString(), /^HTTP\/1\.1 426 /);
+  socket.destroy();
+});
+
+test("GPT websocket upgrades are proxied to chatgpt.com", async (t) => {
+  const upstream = await listenWsUpstream();
+  const proxy = createProxyServer({
+    chatGptBaseUrl: upstream.url,
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+  });
+  const proxyUrl = await listen(proxy);
+  t.after(async () => {
+    for (const socket of upstream.state.sockets) socket.terminate();
+    await close(proxy);
+    await close(upstream.server);
+  });
+
+  const { client, opened } = openClient(wsRoute(proxyUrl), {
+    authorization: "Bearer sk-test",
+    originator: "codex-test",
+  });
+  t.after(() => client.terminate());
+  await opened;
+  await waitUntil(() => upstream.state.sockets.length >= 1);
+
+  client.send(JSON.stringify({
+    type: "response.create",
+    model: "gpt-5.6-sol",
+    input: [{ type: "message", role: "user", content: "hi" }],
+  }));
+  await waitUntil(() => upstream.state.messages.length >= 1);
+  assert.equal(upstream.state.urls[0], "/responses");
+  assert.equal(upstream.state.headers[0].authorization, "Bearer sk-test");
+  assert.equal(upstream.state.headers[0].originator, "codex-test");
+  assert.equal(JSON.parse(upstream.state.messages[0]).model, "gpt-5.6-sol");
+
+  const replied = once(client, "message");
+  upstream.state.sockets[0].send(JSON.stringify({ type: "response.created", id: "resp_1" }));
+  const [reply] = await replied;
+  assert.equal(JSON.parse(reply.toString()).id, "resp_1");
+  client.terminate();
+});
+
+test("DeepSeek websocket attempts are closed so the client falls back to HTTP", async (t) => {
+  const upstream = await listenWsUpstream();
+  const proxy = createProxyServer({
+    chatGptBaseUrl: upstream.url,
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+  });
+  const proxyUrl = await listen(proxy);
+  t.after(async () => {
+    await close(proxy);
+    await close(upstream.server);
+  });
+
+  const { client, opened } = openClient(wsRoute(proxyUrl));
+  t.after(() => client.terminate());
+  await opened;
+  client.send(JSON.stringify({
+    type: "response.create",
+    model: "deepseek/deepseek-flash",
+    input: [],
+  }));
+  const [code] = await once(client, "close");
+  assert.equal(code, 1008);
+  assert.equal(upstream.state.messages.length, 0);
+});
+
+test("GPT websocket rewrite strips foreign DeepSeek reasoning_text", async (t) => {
+  const upstream = await listenWsUpstream();
+  const proxy = createProxyServer({
+    chatGptBaseUrl: upstream.url,
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+  });
+  const proxyUrl = await listen(proxy);
+  t.after(async () => {
+    for (const socket of upstream.state.sockets) socket.terminate();
+    await close(proxy);
+    await close(upstream.server);
+  });
+
+  const { client, opened } = openClient(wsRoute(proxyUrl));
+  t.after(() => client.terminate());
+  await opened;
+  client.send(JSON.stringify({
+    type: "response.create",
+    model: "gpt-6-astra",
+    input: [
+      { type: "reasoning", encrypted_content: "gpt-sealed", content: [{ type: "reasoning_text", text: "native" }] },
+      { type: "reasoning", encrypted_content: null, content: [{ type: "reasoning_text", text: "foreign" }] },
+      { type: "message", role: "user", content: "hi" },
+    ],
+  }));
+  await waitUntil(() => upstream.state.messages.length >= 1);
+  assert.deepEqual(JSON.parse(upstream.state.messages[0]).input, [
+    { type: "reasoning", encrypted_content: "gpt-sealed", content: [{ type: "reasoning_text", text: "native" }] },
+    { type: "message", role: "user", content: "hi" },
+  ]);
+});
+
+test("malformed upgrade request lines do not kill the router", async (t) => {
+  const proxy = createProxyServer({
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+  });
+  const proxyUrl = await listen(proxy);
+  t.after(async () => { await close(proxy); });
+  const { port } = proxy.address();
+  const socket = net.connect(port, "127.0.0.1");
+  await once(socket, "connect");
+  socket.write(
+    "GET //[/x HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+    + "Connection: Upgrade\r\nUpgrade: websocket\r\n"
+    + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+  );
+  const [chunk] = await once(socket, "data");
+  assert.match(chunk.toString(), /^HTTP\/1\.1 400 /);
+  socket.destroy();
+  const health = await fetch(`${proxyUrl}/${ROUTER_TOKEN}/health`);
+  assert.equal(health.status, 200);
+});
+
+test("server.close finishes while an idle proxied websocket is open", async (t) => {
+  const upstream = await listenWsUpstream();
+  const proxy = createProxyServer({
+    chatGptBaseUrl: upstream.url,
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+  });
+  const proxyUrl = await listen(proxy);
+  t.after(async () => { await close(upstream.server); });
+  const { client, opened } = openClient(wsRoute(proxyUrl));
+  t.after(() => { try { client.terminate(); } catch { /* closed with the server */ } });
+  await opened;
+  await waitUntil(() => upstream.state.sockets.length >= 1);
+  const finished = Promise.race([
+    close(proxy),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("server.close hung")), 1500)),
+  ]);
+  await finished;
+});
+
+test("upstream close 1005 still closes the Codex client", async (t) => {
+  const fake = {
+    binaryType: "arraybuffer",
+    send() {},
+    close() {},
+    terminate() {},
+    addEventListener(type, fn) {
+      this.listeners ??= {};
+      (this.listeners[type] ??= []).push(fn);
+    },
+    emit(type, event) {
+      for (const fn of this.listeners?.[type] ?? []) fn(event);
+    },
+  };
+  const proxy = createProxyServer({
+    chatGptBaseUrl: "http://127.0.0.1:9",
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+    openWebSocket() {
+      queueMicrotask(() => fake.emit("open", {}));
+      return fake;
+    },
+  });
+  const proxyUrl = await listen(proxy);
+  t.after(async () => { await close(proxy); });
+  const { client, opened } = openClient(wsRoute(proxyUrl));
+  t.after(() => client.terminate());
+  await opened;
+  const closed = once(client, "close");
+  fake.emit("close", { code: 1005, reason: "" });
+  const [code] = await Promise.race([
+    closed,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("client did not close")), 1000)),
+  ]);
+  assert.equal(code, 1000);
+});
+
+test("second websocket turn still strips foreign reasoning and rejects DeepSeek", async (t) => {
+  const upstream = await listenWsUpstream();
+  const proxy = createProxyServer({
+    chatGptBaseUrl: upstream.url,
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+  });
+  const proxyUrl = await listen(proxy);
+  t.after(async () => {
+    for (const socket of upstream.state.sockets) socket.terminate();
+    await close(proxy);
+    await close(upstream.server);
+  });
+  const { client, opened } = openClient(wsRoute(proxyUrl));
+  t.after(() => client.terminate());
+  await opened;
+  client.send(JSON.stringify({
+    type: "response.create",
+    model: "gpt-6-astra",
+    input: [{ type: "message", role: "user", content: "one" }],
+  }));
+  await waitUntil(() => upstream.state.messages.length >= 1);
+  client.send(JSON.stringify({
+    type: "response.create",
+    model: "gpt-6-astra",
+    input: [
+      { type: "reasoning", encrypted_content: null, content: [{ type: "reasoning_text", text: "foreign" }] },
+      { type: "message", role: "user", content: "two" },
+    ],
+  }));
+  await waitUntil(() => upstream.state.messages.length >= 2);
+  assert.deepEqual(JSON.parse(upstream.state.messages[1]).input, [
+    { type: "message", role: "user", content: "two" },
+  ]);
+  client.send(JSON.stringify({
+    type: "response.create",
+    model: "deepseek/deepseek-flash",
+    input: [{ type: "message", role: "user", content: "three" }],
+  }));
+  const [code] = await once(client, "close");
+  assert.equal(code, 1008);
+  assert.equal(upstream.state.messages.length, 2);
+});
+
+test("upstream connect refusal closes the Codex websocket with 1011", async (t) => {
+  const proxy = createProxyServer({
+    chatGptBaseUrl: "http://127.0.0.1:1",
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+  });
+  const proxyUrl = await listen(proxy);
+  t.after(async () => { await close(proxy); });
+  const { client, opened } = openClient(wsRoute(proxyUrl));
+  t.after(() => client.terminate());
+  await opened;
+  const [code] = await Promise.race([
+    once(client, "close"),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("client did not close after refused upstream")), 2000)),
+  ]);
+  assert.equal(code, 1011);
 });

@@ -20,7 +20,7 @@ function clone(value) {
 // start). Backfill known-required fields on native entries with safe
 // defaults; the DeepSeek entry sets its own values explicitly.
 const NATIVE_ENTRY_DEFAULTS = {
-  prefer_websockets: false,
+  prefer_websockets: true,
   supports_reasoning_summaries: false,
 };
 

@@ -9,13 +9,14 @@ authors:
 repository-code: "https://github.com/fish2lab/DSCodex"
 url: "https://github.com/fish2lab/DSCodex"
 license: MIT
-version: 1.2.0
-date-released: "2026-09-11"
+version: 1.2.1
+date-released: "2026-09-12"
 abstract: >-
   Open-source local loopback router that adds DeepSeek V4.1 Flash to the
   stock ChatGPT desktop app, Codex CLI, and Codex IDE while keeping GPT
-  models on ChatGPT OAuth. Native DeepSeek Responses API; no fork and no
-  app patch.
+  models on ChatGPT OAuth, including the desktop Responses WebSocket.
+  DeepSeek uses the native HTTP Responses API; GPT websocket upgrades are
+  proxied to chatgpt.com. No fork and no app patch.
 keywords:
   - DSCodex
   - DeepSeek
@@ -23,5 +24,7 @@ keywords:
   - Codex
   - ChatGPT
   - Responses API
+  - WebSocket
+  - reconnect
   - coding agent
   - loopback router

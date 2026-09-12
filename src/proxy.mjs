@@ -1,4 +1,5 @@
 import http from "node:http";
+import { createRequire } from "node:module";
 import {
   createCipheriv,
   createDecipheriv,
@@ -13,6 +14,11 @@ import {
   DEEPSEEK_BASE_URL,
   deepSeekModelFor,
 } from "./constants.mjs";
+import {
+  chatgptWebSocketHeaders,
+  handleResponsesUpgrade,
+  rejectUpgrade,
+} from "./websocket-proxy.mjs";
 
 const CHATGPT_FORWARDED_REQUEST_HEADERS = new Set([
   "authorization",
@@ -32,13 +38,29 @@ const CHATGPT_FORWARDED_REQUEST_HEADERS = new Set([
   "x-codex-turn-state",
   "x-codex-window-id",
   "x-oai-attestation",
+  "x-openai-codex-luna-reserve",
+  "x-openai-encrypted-tool-arguments",
   "x-openai-fedramp",
+  "x-openai-internal-caller",
   "x-openai-internal-codex-residency",
   "x-openai-internal-codex-responses-lite",
   "x-openai-memgen-request",
   "x-openai-subagent",
+  "x-openai-tool-output-truncation-policy",
+  "x-codex-routing-hint",
+  "x-codex-ws-stream-request-start-ms",
   "x-responsesapi-include-timing-metrics",
 ]);
+
+const require = createRequire(import.meta.url);
+
+function loadWebSocketServer() {
+  try {
+    return require("ws").WebSocketServer;
+  } catch {
+    throw new Error("DSCodex router requires the ws package; run npm install in the DSCodex checkout");
+  }
+}
 
 const DEEPSEEK_FORWARDED_REQUEST_HEADERS = new Set(["user-agent"]);
 
@@ -473,12 +495,20 @@ export function createProxyServer({
   onShutdown,
   maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES,
   maxDecodedBytes = DEFAULT_MAX_DECODED_BYTES,
+  openWebSocket,
 } = {}) {
   if (!validRouterToken(routerToken)) throw new Error("DSCodex routerToken is required");
   if (shutdownToken && !validRouterToken(shutdownToken)) throw new Error("Invalid DSCodex shutdownToken");
+  const WebSocketServer = loadWebSocketServer();
   const server = http.createServer(async (request, response) => {
     const startedAt = Date.now();
-    const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    let url;
+    try {
+      url = new URL(request.url ?? "/", "http://127.0.0.1");
+    } catch {
+      json(response, 400, { error: { message: "Invalid request URL" } });
+      return;
+    }
     const pathname = authorizedPath(url.pathname, routerToken);
     if (!pathname) {
       json(response, 404, { error: { message: "Not found" } });
@@ -625,12 +655,57 @@ export function createProxyServer({
   // headersTimeout must stay above keepAliveTimeout.
   server.keepAliveTimeout = 120_000;
   server.headersTimeout = 125_000;
-  server.on("upgrade", (_request, socket) => {
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: maxRequestBytes,
+    perMessageDeflate: false,
+  });
+  const terminateWebSockets = () => {
+    for (const client of wss.clients) {
+      try { client.terminate(); } catch { /* already closing */ }
+    }
+  };
+  const originalCloseAll = server.closeAllConnections?.bind(server);
+  server.closeAllConnections = () => {
+    terminateWebSockets();
+    originalCloseAll?.();
+  };
+  const originalClose = server.close.bind(server);
+  server.close = (...args) => {
+    terminateWebSockets();
+    return originalClose(...args);
+  };
+  server.on("close", () => wss.close());
+  server.on("upgrade", (request, socket, head) => {
     // Handling `upgrade` detaches the socket from the server's own error
     // handling, so an ECONNRESET here raised an unhandled 'error' event and
     // killed the whole router — Codex then sat in "reconnecting" forever.
     socket.on("error", () => {});
-    socket.end("HTTP/1.1 426 Upgrade Required\r\nConnection: close\r\n\r\n");
+    let url;
+    try {
+      url = new URL(request.url ?? "/", "http://127.0.0.1");
+    } catch {
+      rejectUpgrade(socket, "400 Bad Request");
+      return;
+    }
+    const pathname = authorizedPath(url.pathname, routerToken);
+    if (!pathname) {
+      rejectUpgrade(socket);
+      return;
+    }
+    handleResponsesUpgrade({
+      wss,
+      request,
+      socket,
+      head,
+      pathname,
+      search: url.search,
+      chatGptBaseUrl,
+      requestHeaders: chatgptWebSocketHeaders(request, CHATGPT_FORWARDED_REQUEST_HEADERS),
+      rewriteBody: (parsed) => buildChatGptBody(parsed, routerToken),
+      logger,
+      openWebSocket,
+    });
   });
   return server;
 }

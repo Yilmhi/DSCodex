@@ -44,7 +44,7 @@ test("catalog backfills newly required fields on stale native cache entries", ()
   const catalog = buildCatalog({ models: [staleTemplate] });
   const native = catalog.models.find((model) => model.slug === "gpt-5.6-sol");
   assert.equal(native.supports_reasoning_summaries, false);
-  assert.equal(native.prefer_websockets, false);
+  assert.equal(native.prefer_websockets, true);
   assert.equal(native.base_instructions, TEMPLATE.model_messages.instructions_template);
   const deepseek = catalog.models.find((model) => model.slug === "deepseek/deepseek-flash");
   assert.equal(deepseek.supports_reasoning_summaries, false);

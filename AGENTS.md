@@ -13,9 +13,11 @@ The non-negotiable details:
    runtime: `DEEPSEEK_API_KEY` env (one-off override), then the stored file, then the legacy macOS
    login-session value. Never store the key in `~/.codex/config.toml`. `uninstall` deletes the
    stored key file.
-2. Run `node src/cli.mjs install`, then `node src/cli.mjs start`, then `node src/cli.mjs doctor`.
+2. Run `npm install` in the checkout (the router needs the `ws` package), then
+   `node src/cli.mjs install`, then `node src/cli.mjs start`, then `node src/cli.mjs doctor`.
    Doctor must report `ok` for all six checks: config, catalog, router token, proxy, key, and the
-   app-server bridge state.
+   app-server bridge state. `key set` / `install` / `stop` / `doctor` do not load `ws`; only
+   `start` / `serve` do.
 3. Run `npm test`; every test must pass (Windows-native tests are skipped on other platforms).
 4. The ChatGPT desktop app must be fully quit (`⌘Q`) and relaunched, and the user must start a NEW
    task to see `🐳 DeepSeek Flash`. Existing tasks keep their old model state.
@@ -137,5 +139,7 @@ The non-negotiable details:
     relies on the user account ACL there. Autostart uses the platform-native scheduler on all three
     OSes (launchd / systemd / Task Scheduler + VBS). The app-server bridge is macOS-only (see 10–12).
 20. Pets, plugins, skills, and MCP remain client-side. Voice uses GPT-Live and must never route to
-    DeepSeek; Realtime routing compatibility is still pending PR #21 validation. The catalog keeps
-    `prefer_websockets = false` and the router answers upgrade requests with 426.
+    DeepSeek; Realtime routing compatibility is still pending PR #21 validation. DeepSeek catalog
+    entries keep `prefer_websockets = false`. Native GPT entries keep `prefer_websockets = true`.
+    Authorized `/v1/responses` WebSocket upgrades are proxied to chatgpt.com; a DeepSeek model on
+    that socket is closed so the client falls back to HTTP. Other upgrade probes still receive 426.

@@ -3,9 +3,9 @@
 > Open-source multi-model router for OpenAI Codex that runs only on the user's machine. It adds DeepSeek V4.1 Flash to the stock ChatGPT desktop app, Codex CLI, and Codex IDE extension, and keeps GPT models on ChatGPT OAuth. DeepSeek traffic uses the native Responses API. No fork, no app patch.
 
 - Canonical repository: https://github.com/fish2lab/DSCodex
-- Latest release: v1.2.0 "From the New World" (2026-09-11) — https://github.com/fish2lab/DSCodex/releases/tag/v1.2.0
+- Latest release: v1.2.1 "Keep the Wire" (2026-09-12) — https://github.com/fish2lab/DSCodex/releases/tag/v1.2.1
 - License: MIT
-- Runtime: Node.js >= 24.5, zero npm runtime dependencies
+- Runtime: Node.js >= 24.5, one runtime dependency (`ws`) for the Responses WebSocket server
 - Default loopback: `http://127.0.0.1:10110/<router-token>/v1`
 
 ## What it is
@@ -15,7 +15,7 @@ DSCodex writes two marker-owned keys into `~/.codex/config.toml`:
 1. `openai_base_url` — the token-authenticated loopback router
 2. `model_catalog_json` — a merged catalog that inserts `🐳 DeepSeek Flash` into the native picker
 
-Traffic splits by model name. `deepseek/deepseek-flash` (and the legacy names `deepseek-v4-flash` / `deepseek-v4-pro` / `deepseek-v4-flash-vision-exp`) go to `https://api.deepseek.com/responses`. Every other model, including GPT, is forwarded to `https://chatgpt.com/backend-api/codex` with the original OAuth headers.
+Traffic splits by model name. `deepseek/deepseek-flash` (and the legacy names `deepseek-v4-flash` / `deepseek-v4-pro` / `deepseek-v4-flash-vision-exp`) go to `https://api.deepseek.com/responses` over HTTP. DeepSeek websocket upgrades are closed so the client falls back to that HTTP path; they are never forwarded to OpenAI. Every other model, including GPT, is forwarded to `https://chatgpt.com/backend-api/codex` with the original OAuth headers. ChatGPT desktop 26.908+ dials `ws://127.0.0.1:10110/<token>/v1/responses` first; DSCodex proxies that upgrade to `wss://chatgpt.com/backend-api/codex/responses`. If the loopback router is down, official GPT models show Reconnecting 1/5…5/5.
 
 It is not a plugin for chatgpt.com. Pets, plugins, skills, and MCP stay client-side. Voice / GPT-Live is never sent to DeepSeek.
 
@@ -48,7 +48,7 @@ Full constraints: https://github.com/fish2lab/DSCodex/blob/main/AGENTS.md
 - Native DeepSeek tool loops: shell, apply_patch, function calls, web search
 - Native vision: `input_image` parts are forwarded to `deepseek-flash`; no GPT image descriptions
 - Remote compaction v2 for DeepSeek: the summary is encrypted into a DSCodex compaction item, never stored as plaintext in the rollout
-- GPT passthrough stays byte-for-byte unless foreign DeepSeek `reasoning_text` or an undecryptable DSCodex compaction item must be stripped
+- GPT passthrough stays byte-for-byte unless foreign DeepSeek `reasoning_text` or an undecryptable DSCodex compaction item must be stripped (HTTP SSE and every Responses WebSocket `response.create`, not only the first frame)
 - Optional macOS app-server bridge for per-provider effort memory in the picker; off by default because it moves the app onto stdio and breaks Computer Use
 - Optional autostart: launchd / systemd / Windows Task Scheduler. Generated artifacts never embed the API key.
 
@@ -72,6 +72,9 @@ A: Yes. The picker keeps GPT and adds `🐳 DeepSeek Flash`. The router selects 
 
 Q: Does the official DeepSeek Codex script do the same thing?
 A: No. It points all of Codex at DeepSeek and drops the GPT OAuth models.
+
+Q: Why does ChatGPT desktop reconnect 5/5 on official GPT models after installing DSCodex?
+A: The app prefers Responses WebSocket to the configured `openai_base_url`. Start the router (`node src/cli.mjs start`, then `autostart enable`). GPT upgrades are proxied to chatgpt.com; DeepSeek stays on HTTP Responses.
 
 Q: Does DSCodex modify the ChatGPT or Codex binaries?
 A: No. It owns only `openai_base_url`, `model_catalog_json`, and the `~/.codex/dscodex/` directory.
