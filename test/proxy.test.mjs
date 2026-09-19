@@ -96,9 +96,67 @@ test("routes Flash and legacy task aliases to the current Flash model", async (t
     assert.equal(request.body.store, false);
     assert.equal("previous_response_id" in request.body, false);
     assert.equal("metadata" in request.body, false);
-    assert.deepEqual(request.body.input[0], { type: "message", role: "assistant", content: "prior answer" });
+    assert.deepEqual(request.body.input[0], { type: "message", role: "user", content: "prior answer" });
     assert.deepEqual(request.body.input[1], { type: "function_call_output", call_id: "call_7", output: "done" });
   }
+});
+
+test("forwards an inter-agent task message as text instead of an encrypted_content block", async (t) => {
+  const observed = [];
+  const upstream = http.createServer(async (request, response) => {
+    observed.push(JSON.parse(await bodyOf(request)));
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end("event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n");
+  });
+  const upstreamUrl = await listen(upstream);
+  const proxy = createProxyServer({
+    deepSeekKey: "test-key",
+    deepSeekBaseUrl: upstreamUrl,
+    chatGptBaseUrl: upstreamUrl,
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+  });
+  const proxyUrl = await listen(proxy);
+  t.after(async () => { await close(proxy); await close(upstream); });
+
+  // Codex ships a task handed to another agent as a message whose payload block is
+  // typed `encrypted_content` even though the text is plain. DeepSeek's content enum
+  // only knows input_text/output_text/input_image/input_file, so forwarding the block
+  // unchanged fails the whole request with a 422 and the child agent never starts.
+  const taskText = "Message Type: NEW_TASK\nTask name: /root/child\nSender: /root\nPayload:\n";
+  const payload = "reply with banana";
+  const response = await fetch(route(proxyUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "deepseek/deepseek-flash",
+      stream: true,
+      input: [{
+        id: "amsg_1",
+        type: "agent_message",
+        author: "/root",
+        recipient: "/root/child",
+        content: [
+          { type: "input_text", text: taskText },
+          { type: "encrypted_content", encrypted_content: payload },
+        ],
+        internal_chat_message_metadata_passthrough: { turn_id: "turn_1" },
+      }],
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  await response.text();
+  const forwarded = observed.at(-1).input[0];
+  assert.equal(forwarded.type, "message");
+  // `user`, not `assistant`: DeepSeek rejects a replayed assistant turn without
+  // reasoning_text once the request carries tools, which killed every child agent.
+  assert.equal(forwarded.role, "user");
+  assert.deepEqual(forwarded.content, [
+    { type: "input_text", text: taskText },
+    { type: "input_text", text: payload },
+  ]);
+  assert.equal("internal_chat_message_metadata_passthrough" in forwarded, false);
 });
 
 test("adapts Codex remote compaction v2 to a DeepSeek summary and restores it on replay", async (t) => {

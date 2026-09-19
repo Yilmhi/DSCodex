@@ -117,6 +117,26 @@ function openCompaction(value, secret) {
   }
 }
 
+// Codex hands another agent its task as a message whose payload arrives in a block
+// typed `encrypted_content`. The block is plain text in practice, and DeepSeek's
+// content enum — input_text, output_text, input_image, input_file — rejects the
+// variant outright, failing the whole request with a 422 so the child agent never
+// starts. Forward the payload as text; a block that cannot be read as text (a real
+// sealed artifact) is dropped instead of being handed to the model as ciphertext.
+function contentBlockAsText(block, compactionSecret) {
+  const value = block.encrypted_content;
+  if (typeof value !== "string" || value.length === 0) return null;
+  if (value.startsWith(COMPACTION_PREFIX)) {
+    const summary = openCompaction(value, compactionSecret);
+    return summary ? { type: "input_text", text: summary } : null;
+  }
+  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(value)) return null;
+  return { type: "input_text", text: value };
+}
+
+const isEncryptedBlock = (block) =>
+  Boolean(block) && typeof block === "object" && block.type === "encrypted_content";
+
 function convertInputItem(item, compactionSecret) {
   if (!item || typeof item !== "object" || Array.isArray(item)) return item;
   if (item.type === "compaction") {
@@ -134,9 +154,21 @@ function convertInputItem(item, compactionSecret) {
   }
   const converted = { ...item };
   delete converted.id;
+  delete converted.internal_chat_message_metadata_passthrough;
   if (converted.type === "agent_message") {
+    // An inter-agent message is a task handed *to* this agent, not a turn the model
+    // produced. Replaying it as `assistant` makes DeepSeek treat it as its own prior
+    // thinking turn: with tools in the request it answers "The `reasoning_text` in
+    // the thinking mode must be passed back to the API." and the whole request fails,
+    // which is fatal for a freshly spawned child agent whose task message is the last
+    // item. `user` carries the same text without claiming prior reasoning.
     converted.type = "message";
-    converted.role = "assistant";
+    converted.role = "user";
+  }
+  if (Array.isArray(converted.content) && converted.content.some(isEncryptedBlock)) {
+    converted.content = converted.content
+      .map((block) => (isEncryptedBlock(block) ? contentBlockAsText(block, compactionSecret) : block))
+      .filter((block) => block != null);
   }
   return converted;
 }
