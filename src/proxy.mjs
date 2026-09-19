@@ -189,24 +189,38 @@ function convertInputItem(item, compactionSecret) {
   return converted;
 }
 
+// ChatGPT verifies every encrypted payload it is handed and fails the whole turn with
+// "the encrypted content could not be verified / decrypted" when one was issued by another
+// provider. That is what breaks a GPT sub-agent spawned from a DeepSeek session: the child's
+// request replays history carrying DeepSeek-issued encrypted fields — and DeepSeek returns a
+// non-null `encrypted_content` that is not ChatGPT ciphertext, so the old "is the field
+// empty?" test never caught it. ChatGPT's own ciphertext is base64 beginning "gAAAAA", so
+// that is the only encrypted payload allowed through; DSCodex-sealed compactions are unwrapped
+// below; everything else is dropped rather than replayed for the upstream to reject.
+const CHATGPT_SEALED_PREFIX = "gAAAAA";
+const sealedByChatGpt = (value) =>
+  typeof value === "string" && value.startsWith(CHATGPT_SEALED_PREFIX);
+
 // Provider-specific replay artifacts cannot be sent to ChatGPT. Keep native GPT
 // reasoning intact and avoid re-encoding ordinary GPT requests at all.
 function buildChatGptBody(body, compactionSecret) {
   if (!Array.isArray(body?.input)) return null;
   let changed = false;
   const input = body.input.flatMap((item) => {
-    if (item?.type === "reasoning"
-        && !item.encrypted_content
-        && Array.isArray(item.content)
-        && item.content.some((part) => part?.type === "reasoning_text")) {
-      changed = true;
-      return [];
+    if (item?.type === "reasoning" && !sealedByChatGpt(item.encrypted_content)) {
+      const foreign = item.encrypted_content != null
+        || (Array.isArray(item.content) && item.content.some((part) => part?.type === "reasoning_text"));
+      if (foreign) {
+        changed = true;
+        return [];
+      }
     }
-    if (item?.type === "compaction"
-        && typeof item.encrypted_content === "string"
-        && item.encrypted_content.startsWith(COMPACTION_PREFIX)) {
+    if (item?.type === "compaction" && !sealedByChatGpt(item.encrypted_content)) {
       changed = true;
-      const summary = openCompaction(item.encrypted_content, compactionSecret);
+      const summary = typeof item.encrypted_content === "string"
+        && item.encrypted_content.startsWith(COMPACTION_PREFIX)
+        ? openCompaction(item.encrypted_content, compactionSecret)
+        : null;
       return summary ? [{
         type: "message", role: "assistant",
         content: [{ type: "output_text", text: `[Compacted prior context]\n${summary}` }],

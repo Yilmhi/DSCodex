@@ -807,10 +807,10 @@ for (const compressed of [false, true]) {
     const url = await listen(proxy);
     t.after(async () => { await close(proxy); await close(upstream); });
     const retained = [
-      { type: "reasoning", encrypted_content: "gpt-sealed", content: [{ type: "reasoning_text", text: "native" }] },
+      { type: "reasoning", summary: [], content: [], encrypted_content: "gAAAAABmSealedByChatGptForReplay0000000000000000" },
       { type: "reasoning", summary: [{ type: "summary_text", text: "keep" }] },
       { type: "message", role: "user", content: "reasoning_text is literal user text" },
-      { type: "compaction", encrypted_content: "gpt-compaction" },
+      { type: "compaction", encrypted_content: "gAAAAABmSealedByChatGptForReplay0000000000000001" },
       { type: "function_call", call_id: "call_1", name: "shell", arguments: "{}" },
       { type: "function_call_output", call_id: "call_1", output: "done" },
     ];
@@ -830,6 +830,44 @@ for (const compressed of [false, true]) {
     assert.equal(observed.headers['content-encoding'], undefined);
   });
 }
+
+test("GPT replay drops encrypted payloads that another provider issued", async (t) => {
+  let observed;
+  const upstream = http.createServer(async (request, response) => {
+    observed = JSON.parse(await bodyOf(request));
+    response.end('{}');
+  });
+  const proxy = createProxyServer({ chatGptBaseUrl: await listen(upstream), routerToken: ROUTER_TOKEN, logger: { info() {}, error() {} } });
+  const url = await listen(proxy);
+  t.after(async () => { await close(proxy); await close(upstream); });
+
+  // ChatGPT verifies every encrypted payload it is handed. A reasoning item that came back
+  // from a different provider — a DeepSeek token, a DSCodex-sealed blob — cannot be verified,
+  // and Codex then fails the turn with "the encrypted content could not be verified /
+  // decrypted". That is what breaks a GPT sub-agent spawned from a DeepSeek session: the
+  // child's request replays the DeepSeek-flavoured history. Only ChatGPT-issued ciphertext
+  // (base64 "gAAAAA…") may be replayed; everything else is dropped.
+  const body = JSON.stringify({
+    model: "gpt-5.6-sol",
+    input: [
+      {
+        type: "reasoning",
+        summary: [],
+        content: [{ type: "reasoning_text", text: "deepseek thinking" }],
+        encrypted_content: "9591cfc5-c41a-4b44-9f51-a82a2f61d6ff-0",
+      },
+      { type: "reasoning", summary: [], content: [], encrypted_content: "gAAAAABmSealedByChatGptForReplay0000000000000002" },
+      { type: "compaction", encrypted_content: "ZGVlcHNlZWstc2VhbGVkLWJsb2I=" },
+      { type: "message", role: "user", content: [{ type: "input_text", text: "go on" }] },
+    ],
+  });
+  const response = await fetch(route(url), { method: "POST", headers: { "content-type": "application/json" }, body });
+
+  assert.equal(response.status, 200);
+  await response.text();
+  assert.deepEqual(observed.input.map((item) => item.type), ["reasoning", "message"]);
+  assert.equal(observed.input[0].encrypted_content, "gAAAAABmSealedByChatGptForReplay0000000000000002");
+});
 
 test("ordinary compressed GPT traffic preserves exact bytes", async (t) => {
   let observed;
@@ -1030,14 +1068,14 @@ test("GPT websocket rewrite strips foreign DeepSeek reasoning_text", async (t) =
     type: "response.create",
     model: "gpt-6-astra",
     input: [
-      { type: "reasoning", encrypted_content: "gpt-sealed", content: [{ type: "reasoning_text", text: "native" }] },
+      { type: "reasoning", encrypted_content: "gAAAAABmSealedByChatGptForReplay0000000000000003", content: [{ type: "reasoning_text", text: "native" }] },
       { type: "reasoning", encrypted_content: null, content: [{ type: "reasoning_text", text: "foreign" }] },
       { type: "message", role: "user", content: "hi" },
     ],
   }));
   await waitUntil(() => upstream.state.messages.length >= 1);
   assert.deepEqual(JSON.parse(upstream.state.messages[0]).input, [
-    { type: "reasoning", encrypted_content: "gpt-sealed", content: [{ type: "reasoning_text", text: "native" }] },
+    { type: "reasoning", encrypted_content: "gAAAAABmSealedByChatGptForReplay0000000000000003", content: [{ type: "reasoning_text", text: "native" }] },
     { type: "message", role: "user", content: "hi" },
   ]);
 });
