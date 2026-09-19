@@ -170,6 +170,7 @@ ChatGPT 桌面端 26.908+ 会先连 `ws://127.0.0.1:10110/<token>/v1/responses`�
 - **官方 GPT WebSocket。** 桌面端 26.908+ 先连 loopback WS。路由器必须在跑，upgrade 才会透传到 chatgpt.com；停掉就 Reconnecting 5/5。DeepSeek 若被打到同一条 WS，close 1008 后回 HTTP Responses。
 - **Voice。** GPT-Live 从不发给 DeepSeek；Realtime 路由兼容仍待 PR #21 验收。Pets、插件、技能与 MCP 仍由客户端处理。
 - **验收范围。** CI 覆盖 macOS / Windows / Linux；Windows 实机（桌面端 + 自启动）尚未在维护者机器上验收。
+- **浏览器控制与 Computer Use。** 内置 Browser Use 需要 ChatGPT 认证的浏览器路由：应用连不上 ChatGPT 后端时报 `No ChatGPT browser route is available`，API-key 模式下报 `unsupported Codex auth method: apikey`；原生 Computer Use 则不能操作浏览器窗口（URL 安全闸门）。原生应用自动化与替代方案见 [`docs/browser-control-and-computer-use.md`](docs/browser-control-and-computer-use.md)。
 - **Key 存储、代理解析、bridge 细节、平台差异。** 见 `AGENTS.md`。
 
 ## 卸载

@@ -169,6 +169,7 @@ Yes. Tool calls and web search go through DeepSeek's Responses API. Flash handle
 - **Official GPT WebSocket.** Desktop 26.908+ dials the loopback WS first. The router has to be running for that upgrade to reach chatgpt.com; if it is down, official models Reconnecting 5/5. A DeepSeek model on the same socket is closed with 1008 so the client falls back to HTTP Responses.
 - **Voice.** GPT-Live is never sent to DeepSeek. Realtime routing compatibility is pending PR #21 validation. Pets, plugins, skills and MCP remain client-side.
 - **Acceptance scope.** CI covers macOS / Windows / Linux. Windows on real hardware (desktop app plus autostart) has not been accepted on the maintainer's machine.
+- **Browser control and Computer Use.** The built-in Browser Use path needs a ChatGPT-authenticated browser route and fails with `No ChatGPT browser route is available` when the app cannot reach the ChatGPT backend (`unsupported Codex auth method: apikey` in API-key mode); native Computer Use refuses to drive browser windows (URL safety gate). Native app automation and the working workaround: [`docs/browser-control-and-computer-use.md`](docs/browser-control-and-computer-use.md).
 - **Key storage, proxy resolution, bridge details, platform differences.** See `AGENTS.md`.
 
 ## Uninstall

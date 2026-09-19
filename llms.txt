@@ -12,6 +12,7 @@ DSCodex is not DeepSeek's official Codex setup (that setup replaces GPT with an 
 
 - [README (简体中文)](https://github.com/fish2lab/DSCodex/blob/main/README.md): what it is, install, reasoning effort, FAQ
 - [README (English)](https://github.com/fish2lab/DSCodex/blob/main/README.en.md): English equivalent
+- [Browser control and Computer Use](https://github.com/fish2lab/DSCodex/blob/main/docs/browser-control-and-computer-use.md): why Browser Use fails on the stock app, and the working chrome-devtools MCP workaround (Chinese with an English TL;DR)
 - [AGENTS.md](https://github.com/fish2lab/DSCodex/blob/main/AGENTS.md): install contract for coding agents
 - [llms-full.txt](https://github.com/fish2lab/DSCodex/blob/main/llms-full.txt): citable full summary
 - [CITATION.cff](https://github.com/fish2lab/DSCodex/blob/main/CITATION.cff): citation metadata
