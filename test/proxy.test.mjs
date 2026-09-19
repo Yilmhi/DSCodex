@@ -6,7 +6,7 @@ import { once } from "node:events";
 import { gzipSync, zstdCompressSync } from "node:zlib";
 import { WebSocket, WebSocketServer } from "ws";
 import { buildDeepSeekBody, createProxyServer } from "../src/proxy.mjs";
-import { requestModel, safeCloseCode, websocketTarget } from "../src/websocket-proxy.mjs";
+import { requestModel, routingHintModel, safeCloseCode, websocketTarget } from "../src/websocket-proxy.mjs";
 
 const ROUTER_TOKEN = "A".repeat(43);
 
@@ -1077,4 +1077,65 @@ test("upstream connect refusal closes the Codex websocket with 1011", async (t) 
     new Promise((_, reject) => setTimeout(() => reject(new Error("client did not close after refused upstream")), 2000)),
   ]);
   assert.equal(code, 1011);
+});
+
+test("routingHintModel reads the model from the Codex routing hint header", () => {
+  assert.equal(
+    routingHintModel({ headers: { "x-codex-routing-hint": "model=deepseek/deepseek-flash;tier=priority" } }),
+    "deepseek/deepseek-flash",
+  );
+  assert.equal(
+    routingHintModel({ headers: { "x-codex-routing-hint": "model=gpt-5.6-sol" } }),
+    "gpt-5.6-sol",
+  );
+  assert.equal(routingHintModel({ headers: {} }), "");
+  assert.equal(routingHintModel({ headers: { "x-codex-routing-hint": "tier=priority" } }), "");
+  assert.equal(routingHintModel({ headers: { "x-codex-routing-hint": 42 } }), "");
+  assert.equal(routingHintModel(undefined), "");
+});
+
+test("DeepSeek-hinted upgrade is rejected with 426 before any upstream dial", async (t) => {
+  const upstream = await listenWsUpstream();
+  const proxy = createProxyServer({
+    chatGptBaseUrl: upstream.url,
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+  });
+  const proxyUrl = await listen(proxy);
+  t.after(async () => { await close(proxy); await close(upstream.server); });
+  const { port } = new URL(proxyUrl);
+  const socket = net.connect(Number(port), "127.0.0.1");
+  await once(socket, "connect");
+  socket.write(
+    `GET /${ROUTER_TOKEN}/v1/responses HTTP/1.1\r\nHost: 127.0.0.1\r\n`
+    + "Connection: Upgrade\r\nUpgrade: websocket\r\n"
+    + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n"
+    + "x-codex-routing-hint: model=deepseek/deepseek-flash;tier=priority\r\n\r\n",
+  );
+  const [chunk] = await once(socket, "data");
+  assert.match(chunk.toString(), /^HTTP\/1\.1 426 /);
+  assert.equal(upstream.state.sockets.length, 0);
+  socket.destroy();
+  const health = await fetch(`${proxyUrl}/${ROUTER_TOKEN}/health`);
+  assert.equal(health.status, 200);
+});
+
+test("GPT-hinted upgrade still proxies to chatgpt.com", async (t) => {
+  const upstream = await listenWsUpstream();
+  const proxy = createProxyServer({
+    chatGptBaseUrl: upstream.url,
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+  });
+  const proxyUrl = await listen(proxy);
+  t.after(async () => {
+    for (const socket of upstream.state.sockets) socket.terminate();
+    await close(proxy);
+    await close(upstream.server);
+  });
+  const { client, opened } = openClient(wsRoute(proxyUrl), { "x-codex-routing-hint": "model=gpt-5.6-sol" });
+  t.after(() => { try { client.terminate(); } catch { /* already closed */ } });
+  await opened;
+  await waitUntil(() => upstream.state.sockets.length >= 1);
+  assert.equal(upstream.state.sockets.length, 1);
 });
