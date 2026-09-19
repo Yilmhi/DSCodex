@@ -159,6 +159,52 @@ test("forwards an inter-agent task message as text instead of an encrypted_conte
   assert.equal("internal_chat_message_metadata_passthrough" in forwarded, false);
 });
 
+test("never forwards a content block DeepSeek cannot deserialize", async (t) => {
+  const observed = [];
+  const upstream = http.createServer(async (request, response) => {
+    observed.push(JSON.parse(await bodyOf(request)));
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end("event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n");
+  });
+  const upstreamUrl = await listen(upstream);
+  const proxy = createProxyServer({
+    deepSeekKey: "test-key",
+    deepSeekBaseUrl: upstreamUrl,
+    chatGptBaseUrl: upstreamUrl,
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+  });
+  const proxyUrl = await listen(proxy);
+  t.after(async () => { await close(proxy); await close(upstream); });
+
+  // DeepSeek deserializes an input message's content into a closed enum: input_text,
+  // output_text, input_image, input_file. Anything else fails the entire request with a
+  // 422 — one unknown block type is enough to take a whole agent turn offline — so the
+  // router has to guarantee the enum on the way out instead of waiting to be taught each
+  // new block type one at a time. Known blocks must survive byte for byte.
+  const response = await fetch(route(proxyUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "deepseek/deepseek-flash",
+      stream: true,
+      input: [
+        { type: "message", role: "assistant", content: [{ type: "refusal", refusal: "I cannot help with that." }] },
+        { type: "message", role: "assistant", content: [{ type: "encrypted_content", encrypted_content: null }] },
+        { type: "message", role: "user", content: [{ type: "input_text", text: "go on" }] },
+      ],
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  await response.text();
+  const input = observed.at(-1).input;
+  assert.deepEqual(input[0].content, [{ type: "input_text", text: "I cannot help with that." }]);
+  // A block that carries no recoverable text is dropped rather than guessed at.
+  assert.deepEqual(input[1].content, []);
+  assert.deepEqual(input[2].content, [{ type: "input_text", text: "go on" }]);
+});
+
 test("adapts Codex remote compaction v2 to a DeepSeek summary and restores it on replay", async (t) => {
   const observed = [];
   const summary = "The user approved the router fix; tests and a restart are still pending.";
