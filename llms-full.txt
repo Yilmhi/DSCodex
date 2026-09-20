@@ -3,7 +3,7 @@
 > Open-source multi-model router for OpenAI Codex that runs only on the user's machine. It adds DeepSeek V4.1 Flash to the stock ChatGPT desktop app, Codex CLI, and Codex IDE extension, and keeps GPT models on ChatGPT OAuth. DeepSeek traffic uses the native Responses API. No fork, no app patch.
 
 - Canonical repository: https://github.com/fish2lab/DSCodex
-- Latest release: v1.2.1 "Keep the Wire" (2026-09-12) — https://github.com/fish2lab/DSCodex/releases/tag/v1.2.1
+- Latest release: v1.2.2 "Spawn and Switch" (2026-09-20) — https://github.com/fish2lab/DSCodex/releases/tag/v1.2.2
 - License: MIT
 - Runtime: Node.js >= 24.5, one runtime dependency (`ws`) for the Responses WebSocket server
 - Default loopback: `http://127.0.0.1:10110/<router-token>/v1`
