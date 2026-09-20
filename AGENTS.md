@@ -126,11 +126,22 @@ The non-negotiable details:
     runs from its `reasoning` item through its calls and includes the assistant preamble message
     Codex emits in between (real rollouts show `reasoning` → `message(assistant)` → call, call);
     a tool output ends it.
-18. Before GPT-bound requests, remove foreign plaintext `reasoning_text` reasoning items and
-    preserve native encrypted GPT reasoning. Decrypt DSCodex-prefixed compaction into assistant
-    context; drop DSCodex compaction that cannot be decrypted. Ordinary GPT requests remain
-    byte-for-byte intact. A rewritten compressed request must lose its original content-encoding
-    header.
+18. Before GPT-bound requests, remove foreign reasoning items and preserve native encrypted GPT
+    reasoning. Native GPT reasoning carries `summary` plus ChatGPT ciphertext (base64 beginning
+    `gAAAAA`) and never a `content` array; DeepSeek reasoning carries `reasoning_text` content and
+    a non-null UUID placeholder in `encrypted_content` (#23), so never decide on the emptiness of
+    `encrypted_content`. A reasoning item is foreign when it has any `reasoning_text` content or a
+    non-null `encrypted_content` that is not ChatGPT ciphertext. Decrypt DSCodex-prefixed
+    compaction into assistant context; drop any compaction that is neither ChatGPT ciphertext nor
+    decryptable DSCodex. Ordinary GPT requests remain byte-for-byte intact. A rewritten compressed
+    request must lose its original content-encoding header. The same rewrite runs on HTTP and on
+    every Responses WebSocket `response.create`.
+    DeepSeek-bound messages must only carry `input_text` / `output_text` / `input_image` /
+    `input_file` content blocks; DeepSeek returns 422 on any other block type. Rewrite unknown
+    blocks that carry text (Codex ships inter-agent tasks as `encrypted_content` blocks) into
+    `input_text` and drop blocks with no readable text. Replay `agent_message` items as `user`
+    messages: as `assistant`, DeepSeek demands the turn's `reasoning_text` and every spawned
+    sub-agent fails with 400 (#24). Strip `internal_chat_message_metadata_passthrough`.
 
 ## Platform and client boundaries
 

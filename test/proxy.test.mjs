@@ -1068,14 +1068,15 @@ test("GPT websocket rewrite strips foreign DeepSeek reasoning_text", async (t) =
     type: "response.create",
     model: "gpt-6-astra",
     input: [
-      { type: "reasoning", encrypted_content: "gAAAAABmSealedByChatGptForReplay0000000000000003", content: [{ type: "reasoning_text", text: "native" }] },
+      { type: "reasoning", summary: [], encrypted_content: "gAAAAABmSealedByChatGptForReplay0000000000000003" },
       { type: "reasoning", encrypted_content: null, content: [{ type: "reasoning_text", text: "foreign" }] },
+      { type: "reasoning", encrypted_content: "9591cfc5-c41a-4b44-9f51-a82a2f61d6ff-0", content: [{ type: "reasoning_text", text: "deepseek placeholder" }] },
       { type: "message", role: "user", content: "hi" },
     ],
   }));
   await waitUntil(() => upstream.state.messages.length >= 1);
   assert.deepEqual(JSON.parse(upstream.state.messages[0]).input, [
-    { type: "reasoning", encrypted_content: "gAAAAABmSealedByChatGptForReplay0000000000000003", content: [{ type: "reasoning_text", text: "native" }] },
+    { type: "reasoning", summary: [], encrypted_content: "gAAAAABmSealedByChatGptForReplay0000000000000003" },
     { type: "message", role: "user", content: "hi" },
   ]);
 });

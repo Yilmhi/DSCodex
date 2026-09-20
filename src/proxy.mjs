@@ -207,9 +207,14 @@ function buildChatGptBody(body, compactionSecret) {
   if (!Array.isArray(body?.input)) return null;
   let changed = false;
   const input = body.input.flatMap((item) => {
-    if (item?.type === "reasoning" && !sealedByChatGpt(item.encrypted_content)) {
-      const foreign = item.encrypted_content != null
-        || (Array.isArray(item.content) && item.content.some((part) => part?.type === "reasoning_text"));
+    if (item?.type === "reasoning") {
+      // Native GPT reasoning carries `summary` plus ChatGPT ciphertext and never a
+      // `content` array, so any `reasoning_text` is provider-issued no matter what
+      // `encrypted_content` holds (DeepSeek fills it with a UUID placeholder, #23).
+      const plaintext = Array.isArray(item.content)
+        && item.content.some((part) => part?.type === "reasoning_text");
+      const foreign = plaintext
+        || (item.encrypted_content != null && !sealedByChatGpt(item.encrypted_content));
       if (foreign) {
         changed = true;
         return [];
