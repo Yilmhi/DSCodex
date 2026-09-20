@@ -167,7 +167,7 @@ ChatGPT 桌面端 26.908+ 会先连 `ws://127.0.0.1:10110/<token>/v1/responses`�
 - **思考块反复折叠。** DeepSeek 每轮工具调用结束都发 `response.completed`，Codex 随之折叠思考、执行工具、再展开下一轮。这是 API 行为，不是 bug；无工具的单轮只折叠一次。
 - **原生识图。** 图片和工具返回的图片直接交给 `deepseek-flash`，不再借 GPT 代读；`DSCODEX_VISION_MODEL` 不再生效。
 - **DeepSeek → GPT 任务历史。** 转发 GPT 前剥掉外来明文 reasoning，把 DSCodex 自己的加密压缩摘要恢复为助手上下文；GPT 原生 reasoning 与普通请求保持原始字节，rollout 文件不改写。HTTP SSE 与每条 Responses WebSocket `response.create` 都做这件事。
-- **官方 GPT WebSocket。** 桌面端 26.908+ 先连 loopback WS。路由器必须在跑，upgrade 才会透传到 chatgpt.com；停掉就 Reconnecting 5/5。DeepSeek 若被打到同一条 WS，close 1008 后回 HTTP Responses。
+- **官方 GPT WebSocket。** 桌面端 26.908+ 先连 loopback WS。路由器必须在跑，upgrade 才会透传到 chatgpt.com；停掉就 Reconnecting 5/5。DeepSeek 的 WS 握手带模型提示（ChatGPT 登录始终会带）时会被直接拒绝（HTTP 426），客户端零重试切到 HTTP Responses；提示缺失时仍在首帧按 close 1008 回退。
 - **Voice。** GPT-Live 从不发给 DeepSeek；Realtime 路由兼容仍待 PR #21 验收。Pets、插件、技能与 MCP 仍由客户端处理。
 - **验收范围。** CI 覆盖 macOS / Windows / Linux；Windows 实机（桌面端 + 自启动）尚未在维护者机器上验收。
 - **Key 存储、代理解析、bridge 细节、平台差异。** 见 `AGENTS.md`。

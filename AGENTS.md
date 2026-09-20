@@ -141,5 +141,9 @@ The non-negotiable details:
 20. Pets, plugins, skills, and MCP remain client-side. Voice uses GPT-Live and must never route to
     DeepSeek; Realtime routing compatibility is still pending PR #21 validation. DeepSeek catalog
     entries keep `prefer_websockets = false`. Native GPT entries keep `prefer_websockets = true`.
-    Authorized `/v1/responses` WebSocket upgrades are proxied to chatgpt.com; a DeepSeek model on
-    that socket is closed so the client falls back to HTTP. Other upgrade probes still receive 426.
+    Authorized `/v1/responses` WebSocket upgrades are proxied to chatgpt.com. When the handshake
+    carries a DeepSeek model in `x-codex-routing-hint` (ChatGPT-auth clients send
+    `model=<slug>;tier=<tier>`), reject the upgrade with HTTP 426: the client maps that response to
+    a direct HTTP fallback with no reconnect retries. When the hint is missing, a DeepSeek model on
+    the accepted socket is still closed with 1008 to force the same fallback. Other upgrade probes
+    still receive 426.

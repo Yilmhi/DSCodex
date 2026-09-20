@@ -12,6 +12,19 @@ export function rejectUpgrade(socket, statusLine = "426 Upgrade Required") {
   socket.end(`HTTP/1.1 ${statusLine}\r\nConnection: close\r\n\r\n`);
 }
 
+// The Codex client sends `x-codex-routing-hint: model=<slug>;tier=<tier>` on the
+// WebSocket handshake (ChatGPT-auth sessions). Rejecting a DeepSeek upgrade with
+// HTTP 426 makes the client fall back to HTTP immediately via
+// `WebsocketStreamOutcome::FallbackToHttp`, with no reconnect retries — instead
+// of accepting the socket and closing on the first frame, which costs 5 backoff
+// retries (~10-15s) per thread.
+export function routingHintModel(request) {
+  const raw = request?.headers?.["x-codex-routing-hint"];
+  if (typeof raw !== "string") return "";
+  const match = /(?:^|;)\s*model=([^;]+)/.exec(raw);
+  return match ? match[1].trim() : "";
+}
+
 export function websocketTarget(baseUrl, pathname, search = "") {
   const httpUrl = new URL(`${String(baseUrl).replace(/\/$/, "")}${upstreamPath(pathname)}${search}`);
   httpUrl.protocol = httpUrl.protocol === "https:" ? "wss:" : "ws:";
@@ -208,6 +221,13 @@ export function handleResponsesUpgrade({
   openWebSocket,
 }) {
   if (pathname !== "/responses" && pathname !== "/v1/responses") {
+    rejectUpgrade(socket);
+    return;
+  }
+  const hintedModel = routingHintModel(request);
+  if (deepSeekModelFor(hintedModel)) {
+    // 426 triggers the client's direct FallbackToHttp path (no retries).
+    logger?.info?.(`deepseek websocket upgrade rejected with 426 ${pathname} (hint model=${hintedModel})`);
     rejectUpgrade(socket);
     return;
   }
