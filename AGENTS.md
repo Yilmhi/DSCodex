@@ -150,7 +150,9 @@ The non-negotiable details:
     relies on the user account ACL there. Autostart uses the platform-native scheduler on all three
     OSes (launchd / systemd / Task Scheduler + VBS). The app-server bridge is macOS-only (see 10–12).
 20. Pets, plugins, skills, and MCP remain client-side. Voice uses GPT-Live and must never route to
-    DeepSeek; Realtime routing compatibility is still pending PR #21 validation. DeepSeek catalog
+    DeepSeek. Since desktop 26.908 voice is client-owned: the app calls
+    `chatgpt.com/wham/realtime/calls` from its own backend client and never sends `/v1/live` to
+    `openai_base_url`, so the router has no voice path to translate (PR #21 closed). DeepSeek catalog
     entries keep `prefer_websockets = false`. Native GPT entries keep `prefer_websockets = true`.
     Authorized `/v1/responses` WebSocket upgrades are proxied to chatgpt.com. When the handshake
     carries a DeepSeek model in `x-codex-routing-hint` (ChatGPT-auth clients send

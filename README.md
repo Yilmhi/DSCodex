@@ -169,7 +169,7 @@ ChatGPT 桌面端 26.908+ 会先连 `ws://127.0.0.1:10110/<token>/v1/responses`�
 - **DeepSeek → GPT 任务历史。** 转发 GPT 前剥掉外来 reasoning（带 `reasoning_text` 内容，或 `encrypted_content` 非 ChatGPT 密文；DeepSeek 现在会填一个 UUID 占位串，见 #23），把 DSCodex 自己的加密压缩摘要恢复为助手上下文；GPT 原生 reasoning 与普通请求保持原始字节，rollout 文件不改写。HTTP SSE 与每条 Responses WebSocket `response.create` 都做这件事。
 - **子 agent。** 发给 DeepSeek 的 `agent_message` 以 `user` 角色重放，`encrypted_content` 等 DeepSeek 不认识的内容块改写成 `input_text`，spawn 子 agent 不再 422 / 400（#24）。
 - **官方 GPT WebSocket。** 桌面端 26.908+ 先连 loopback WS。路由器必须在跑，upgrade 才会透传到 chatgpt.com；停掉就 Reconnecting 5/5。DeepSeek 的 WS 握手带模型提示（ChatGPT 登录始终会带）时会被直接拒绝（HTTP 426），客户端零重试切到 HTTP Responses；提示缺失时仍在首帧按 close 1008 回退。
-- **Voice。** GPT-Live 从不发给 DeepSeek；Realtime 路由兼容仍待 PR #21 验收。Pets、插件、技能与 MCP 仍由客户端处理。
+- **Voice。** GPT-Live 从不发给 DeepSeek。桌面端 26.908 起语音由客户端自己直连 `chatgpt.com/wham/realtime/calls`，不经过 `openai_base_url`，路由器无事可做（PR #21 已关闭）。Pets、插件、技能与 MCP 仍由客户端处理。
 - **验收范围。** CI 覆盖 macOS / Windows / Linux；Windows 实机（桌面端 + 自启动）尚未在维护者机器上验收。
 - **Key 存储、代理解析、bridge 细节、平台差异。** 见 `AGENTS.md`。
 
