@@ -117,6 +117,42 @@ function openCompaction(value, secret) {
   }
 }
 
+// DeepSeek deserializes the content of an input message into a closed enum — input_text,
+// output_text, input_image, input_file — and rejects the entire request with a 422 on
+// anything else. Codex keeps introducing block types (an inter-agent task arrives as
+// `encrypted_content`), and a single unknown block takes a whole agent turn offline, so
+// translate every block into something DeepSeek accepts rather than waiting to be taught
+// each new type one incident at a time.
+const DEEPSEEK_CONTENT_TYPES = new Set(["input_text", "output_text", "input_image", "input_file"]);
+
+const acceptsBlock = (block) => DEEPSEEK_CONTENT_TYPES.has(block?.type);
+
+function textCarriedBy(block) {
+  for (const value of [block.text, block.refusal, block.content]) {
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return null;
+}
+
+function contentBlockForDeepSeek(block, compactionSecret) {
+  if (!block || typeof block !== "object") return block;
+  if (acceptsBlock(block)) return block;
+  if (block.type === "encrypted_content") {
+    const value = block.encrypted_content;
+    if (typeof value !== "string" || value.length === 0) return null;
+    if (value.startsWith(COMPACTION_PREFIX)) {
+      const summary = openCompaction(value, compactionSecret);
+      return summary ? { type: "input_text", text: summary } : null;
+    }
+    // Unreadable bytes are never handed to the model as if they were prose.
+    if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(value)) return null;
+    return { type: "input_text", text: value };
+  }
+  // An unrecognised block: keep the text it carries, drop what cannot be read as text.
+  const text = textCarriedBy(block);
+  return text === null ? null : { type: "input_text", text };
+}
+
 function convertInputItem(item, compactionSecret) {
   if (!item || typeof item !== "object" || Array.isArray(item)) return item;
   if (item.type === "compaction") {
@@ -134,12 +170,36 @@ function convertInputItem(item, compactionSecret) {
   }
   const converted = { ...item };
   delete converted.id;
+  delete converted.internal_chat_message_metadata_passthrough;
   if (converted.type === "agent_message") {
+    // An inter-agent message is a task handed *to* this agent, not a turn the model
+    // produced. Replaying it as `assistant` makes DeepSeek treat it as its own prior
+    // thinking turn: with tools in the request it answers "The `reasoning_text` in
+    // the thinking mode must be passed back to the API." and the whole request fails,
+    // which is fatal for a freshly spawned child agent whose task message is the last
+    // item. `user` carries the same text without claiming prior reasoning.
     converted.type = "message";
-    converted.role = "assistant";
+    converted.role = "user";
+  }
+  if (Array.isArray(converted.content) && converted.content.some((block) => !acceptsBlock(block))) {
+    converted.content = converted.content
+      .map((block) => contentBlockForDeepSeek(block, compactionSecret))
+      .filter((block) => block != null);
   }
   return converted;
 }
+
+// ChatGPT verifies every encrypted payload it is handed and fails the whole turn with
+// "the encrypted content could not be verified / decrypted" when one was issued by another
+// provider. That is what breaks a GPT sub-agent spawned from a DeepSeek session: the child's
+// request replays history carrying DeepSeek-issued encrypted fields — and DeepSeek returns a
+// non-null `encrypted_content` that is not ChatGPT ciphertext, so the old "is the field
+// empty?" test never caught it. ChatGPT's own ciphertext is base64 beginning "gAAAAA", so
+// that is the only encrypted payload allowed through; DSCodex-sealed compactions are unwrapped
+// below; everything else is dropped rather than replayed for the upstream to reject.
+const CHATGPT_SEALED_PREFIX = "gAAAAA";
+const sealedByChatGpt = (value) =>
+  typeof value === "string" && value.startsWith(CHATGPT_SEALED_PREFIX);
 
 // Provider-specific replay artifacts cannot be sent to ChatGPT. Keep native GPT
 // reasoning intact and avoid re-encoding ordinary GPT requests at all.
@@ -147,18 +207,20 @@ function buildChatGptBody(body, compactionSecret) {
   if (!Array.isArray(body?.input)) return null;
   let changed = false;
   const input = body.input.flatMap((item) => {
-    if (item?.type === "reasoning"
-        && !item.encrypted_content
-        && Array.isArray(item.content)
-        && item.content.some((part) => part?.type === "reasoning_text")) {
-      changed = true;
-      return [];
+    if (item?.type === "reasoning" && !sealedByChatGpt(item.encrypted_content)) {
+      const foreign = item.encrypted_content != null
+        || (Array.isArray(item.content) && item.content.some((part) => part?.type === "reasoning_text"));
+      if (foreign) {
+        changed = true;
+        return [];
+      }
     }
-    if (item?.type === "compaction"
-        && typeof item.encrypted_content === "string"
-        && item.encrypted_content.startsWith(COMPACTION_PREFIX)) {
+    if (item?.type === "compaction" && !sealedByChatGpt(item.encrypted_content)) {
       changed = true;
-      const summary = openCompaction(item.encrypted_content, compactionSecret);
+      const summary = typeof item.encrypted_content === "string"
+        && item.encrypted_content.startsWith(COMPACTION_PREFIX)
+        ? openCompaction(item.encrypted_content, compactionSecret)
+        : null;
       return summary ? [{
         type: "message", role: "assistant",
         content: [{ type: "output_text", text: `[Compacted prior context]\n${summary}` }],

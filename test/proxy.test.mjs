@@ -96,9 +96,113 @@ test("routes Flash and legacy task aliases to the current Flash model", async (t
     assert.equal(request.body.store, false);
     assert.equal("previous_response_id" in request.body, false);
     assert.equal("metadata" in request.body, false);
-    assert.deepEqual(request.body.input[0], { type: "message", role: "assistant", content: "prior answer" });
+    assert.deepEqual(request.body.input[0], { type: "message", role: "user", content: "prior answer" });
     assert.deepEqual(request.body.input[1], { type: "function_call_output", call_id: "call_7", output: "done" });
   }
+});
+
+test("forwards an inter-agent task message as text instead of an encrypted_content block", async (t) => {
+  const observed = [];
+  const upstream = http.createServer(async (request, response) => {
+    observed.push(JSON.parse(await bodyOf(request)));
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end("event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n");
+  });
+  const upstreamUrl = await listen(upstream);
+  const proxy = createProxyServer({
+    deepSeekKey: "test-key",
+    deepSeekBaseUrl: upstreamUrl,
+    chatGptBaseUrl: upstreamUrl,
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+  });
+  const proxyUrl = await listen(proxy);
+  t.after(async () => { await close(proxy); await close(upstream); });
+
+  // Codex ships a task handed to another agent as a message whose payload block is
+  // typed `encrypted_content` even though the text is plain. DeepSeek's content enum
+  // only knows input_text/output_text/input_image/input_file, so forwarding the block
+  // unchanged fails the whole request with a 422 and the child agent never starts.
+  const taskText = "Message Type: NEW_TASK\nTask name: /root/child\nSender: /root\nPayload:\n";
+  const payload = "reply with banana";
+  const response = await fetch(route(proxyUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "deepseek/deepseek-flash",
+      stream: true,
+      input: [{
+        id: "amsg_1",
+        type: "agent_message",
+        author: "/root",
+        recipient: "/root/child",
+        content: [
+          { type: "input_text", text: taskText },
+          { type: "encrypted_content", encrypted_content: payload },
+        ],
+        internal_chat_message_metadata_passthrough: { turn_id: "turn_1" },
+      }],
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  await response.text();
+  const forwarded = observed.at(-1).input[0];
+  assert.equal(forwarded.type, "message");
+  // `user`, not `assistant`: DeepSeek rejects a replayed assistant turn without
+  // reasoning_text once the request carries tools, which killed every child agent.
+  assert.equal(forwarded.role, "user");
+  assert.deepEqual(forwarded.content, [
+    { type: "input_text", text: taskText },
+    { type: "input_text", text: payload },
+  ]);
+  assert.equal("internal_chat_message_metadata_passthrough" in forwarded, false);
+});
+
+test("never forwards a content block DeepSeek cannot deserialize", async (t) => {
+  const observed = [];
+  const upstream = http.createServer(async (request, response) => {
+    observed.push(JSON.parse(await bodyOf(request)));
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end("event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n");
+  });
+  const upstreamUrl = await listen(upstream);
+  const proxy = createProxyServer({
+    deepSeekKey: "test-key",
+    deepSeekBaseUrl: upstreamUrl,
+    chatGptBaseUrl: upstreamUrl,
+    logger: { info() {}, error() {} },
+    routerToken: ROUTER_TOKEN,
+  });
+  const proxyUrl = await listen(proxy);
+  t.after(async () => { await close(proxy); await close(upstream); });
+
+  // DeepSeek deserializes an input message's content into a closed enum: input_text,
+  // output_text, input_image, input_file. Anything else fails the entire request with a
+  // 422 — one unknown block type is enough to take a whole agent turn offline — so the
+  // router has to guarantee the enum on the way out instead of waiting to be taught each
+  // new block type one at a time. Known blocks must survive byte for byte.
+  const response = await fetch(route(proxyUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "deepseek/deepseek-flash",
+      stream: true,
+      input: [
+        { type: "message", role: "assistant", content: [{ type: "refusal", refusal: "I cannot help with that." }] },
+        { type: "message", role: "assistant", content: [{ type: "encrypted_content", encrypted_content: null }] },
+        { type: "message", role: "user", content: [{ type: "input_text", text: "go on" }] },
+      ],
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  await response.text();
+  const input = observed.at(-1).input;
+  assert.deepEqual(input[0].content, [{ type: "input_text", text: "I cannot help with that." }]);
+  // A block that carries no recoverable text is dropped rather than guessed at.
+  assert.deepEqual(input[1].content, []);
+  assert.deepEqual(input[2].content, [{ type: "input_text", text: "go on" }]);
 });
 
 test("adapts Codex remote compaction v2 to a DeepSeek summary and restores it on replay", async (t) => {
@@ -703,10 +807,10 @@ for (const compressed of [false, true]) {
     const url = await listen(proxy);
     t.after(async () => { await close(proxy); await close(upstream); });
     const retained = [
-      { type: "reasoning", encrypted_content: "gpt-sealed", content: [{ type: "reasoning_text", text: "native" }] },
+      { type: "reasoning", summary: [], content: [], encrypted_content: "gAAAAABmSealedByChatGptForReplay0000000000000000" },
       { type: "reasoning", summary: [{ type: "summary_text", text: "keep" }] },
       { type: "message", role: "user", content: "reasoning_text is literal user text" },
-      { type: "compaction", encrypted_content: "gpt-compaction" },
+      { type: "compaction", encrypted_content: "gAAAAABmSealedByChatGptForReplay0000000000000001" },
       { type: "function_call", call_id: "call_1", name: "shell", arguments: "{}" },
       { type: "function_call_output", call_id: "call_1", output: "done" },
     ];
@@ -726,6 +830,44 @@ for (const compressed of [false, true]) {
     assert.equal(observed.headers['content-encoding'], undefined);
   });
 }
+
+test("GPT replay drops encrypted payloads that another provider issued", async (t) => {
+  let observed;
+  const upstream = http.createServer(async (request, response) => {
+    observed = JSON.parse(await bodyOf(request));
+    response.end('{}');
+  });
+  const proxy = createProxyServer({ chatGptBaseUrl: await listen(upstream), routerToken: ROUTER_TOKEN, logger: { info() {}, error() {} } });
+  const url = await listen(proxy);
+  t.after(async () => { await close(proxy); await close(upstream); });
+
+  // ChatGPT verifies every encrypted payload it is handed. A reasoning item that came back
+  // from a different provider — a DeepSeek token, a DSCodex-sealed blob — cannot be verified,
+  // and Codex then fails the turn with "the encrypted content could not be verified /
+  // decrypted". That is what breaks a GPT sub-agent spawned from a DeepSeek session: the
+  // child's request replays the DeepSeek-flavoured history. Only ChatGPT-issued ciphertext
+  // (base64 "gAAAAA…") may be replayed; everything else is dropped.
+  const body = JSON.stringify({
+    model: "gpt-5.6-sol",
+    input: [
+      {
+        type: "reasoning",
+        summary: [],
+        content: [{ type: "reasoning_text", text: "deepseek thinking" }],
+        encrypted_content: "9591cfc5-c41a-4b44-9f51-a82a2f61d6ff-0",
+      },
+      { type: "reasoning", summary: [], content: [], encrypted_content: "gAAAAABmSealedByChatGptForReplay0000000000000002" },
+      { type: "compaction", encrypted_content: "ZGVlcHNlZWstc2VhbGVkLWJsb2I=" },
+      { type: "message", role: "user", content: [{ type: "input_text", text: "go on" }] },
+    ],
+  });
+  const response = await fetch(route(url), { method: "POST", headers: { "content-type": "application/json" }, body });
+
+  assert.equal(response.status, 200);
+  await response.text();
+  assert.deepEqual(observed.input.map((item) => item.type), ["reasoning", "message"]);
+  assert.equal(observed.input[0].encrypted_content, "gAAAAABmSealedByChatGptForReplay0000000000000002");
+});
 
 test("ordinary compressed GPT traffic preserves exact bytes", async (t) => {
   let observed;
@@ -926,14 +1068,14 @@ test("GPT websocket rewrite strips foreign DeepSeek reasoning_text", async (t) =
     type: "response.create",
     model: "gpt-6-astra",
     input: [
-      { type: "reasoning", encrypted_content: "gpt-sealed", content: [{ type: "reasoning_text", text: "native" }] },
+      { type: "reasoning", encrypted_content: "gAAAAABmSealedByChatGptForReplay0000000000000003", content: [{ type: "reasoning_text", text: "native" }] },
       { type: "reasoning", encrypted_content: null, content: [{ type: "reasoning_text", text: "foreign" }] },
       { type: "message", role: "user", content: "hi" },
     ],
   }));
   await waitUntil(() => upstream.state.messages.length >= 1);
   assert.deepEqual(JSON.parse(upstream.state.messages[0]).input, [
-    { type: "reasoning", encrypted_content: "gpt-sealed", content: [{ type: "reasoning_text", text: "native" }] },
+    { type: "reasoning", encrypted_content: "gAAAAABmSealedByChatGptForReplay0000000000000003", content: [{ type: "reasoning_text", text: "native" }] },
     { type: "message", role: "user", content: "hi" },
   ]);
 });
